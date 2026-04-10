@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,6 +8,13 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <!-- Apply saved theme immediately to avoid flash -->
+  <script>
+    (function() {
+      var t = localStorage.getItem('bk-theme') || 'light';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
 </head>
 <body>
 
@@ -43,7 +50,13 @@
     </ul>
 
     <div class="sidebar-footer">
-      <a href="{{ url_for('logout') }}" class="nav-link logout">Sign out</a>
+      <button class="theme-toggle nav-link" onclick="toggleTheme()" title="Toggle dark/light mode" aria-label="Toggle theme">
+        <span class="nav-icon theme-icon">☀</span>
+        <span class="theme-label">Light mode</span>
+      </button>
+      <a href="{{ url_for('logout') }}" class="nav-link logout">
+        <span class="nav-icon">→</span> Sign out
+      </a>
     </div>
   </nav>
 
@@ -53,14 +66,19 @@
       <span></span><span></span><span></span>
     </label>
     <span class="mobile-title">{% block mobile_title %}Bookkeeping{% endblock %}</span>
-    {% if months is defined %}
-    <select class="month-select-mobile" onchange="applyMonth(this.value)">
-      <option value="">All months</option>
-      {% for m in months %}
-        <option value="{{ m }}" {% if selected_month == m %}selected{% endif %}>{{ m }}</option>
-      {% endfor %}
-    </select>
-    {% endif %}
+    <div class="mobile-topbar-right">
+      {% if months is defined %}
+      <select class="month-select-mobile" onchange="applyMonth(this.value)">
+        <option value="">All months</option>
+        {% for m in months %}
+          <option value="{{ m }}" {% if selected_month == m %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+      {% endif %}
+      <button class="theme-toggle-mobile" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
+        <span class="theme-icon-mobile">☀</span>
+      </button>
+    </div>
   </div>
 
   <!-- Overlay for mobile nav -->
@@ -91,6 +109,36 @@
       else url.searchParams.delete('month');
       window.location = url.toString();
     }
+
+    function toggleTheme() {
+      var html = document.documentElement;
+      var current = html.getAttribute('data-theme');
+      var next = current === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      localStorage.setItem('bk-theme', next);
+      updateThemeUI(next);
+    }
+
+    function updateThemeUI(theme) {
+      var isDark = theme === 'dark';
+      // Sidebar icon + label
+      document.querySelectorAll('.theme-icon').forEach(function(el) {
+        el.textContent = isDark ? '☽' : '☀';
+      });
+      document.querySelectorAll('.theme-label').forEach(function(el) {
+        el.textContent = isDark ? 'Dark mode' : 'Light mode';
+      });
+      // Mobile icon
+      document.querySelectorAll('.theme-icon-mobile').forEach(function(el) {
+        el.textContent = isDark ? '☽' : '☀';
+      });
+    }
+
+    // Set correct icon on load
+    (function() {
+      var t = localStorage.getItem('bk-theme') || 'light';
+      updateThemeUI(t);
+    })();
   </script>
   {% block scripts %}{% endblock %}
 </body>

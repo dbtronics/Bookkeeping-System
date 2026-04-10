@@ -2,12 +2,15 @@
    Bookkeeping System — main stylesheet
    Fonts: DM Sans (UI), DM Mono (numbers/code)
    Palette: cream bg, teal=business, purple=personal, red=expense
+   Dark mode toggled via [data-theme="dark"] on <html>
    ============================================================ */
 
 /* ---- Reset & base ---------------------------------------- */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-:root {
+/* Light theme (default) */
+:root,
+[data-theme="light"] {
   --bg:          #f7f6f3;
   --surface:     #ffffff;
   --border:      #e8e6e1;
@@ -22,9 +25,34 @@
   --blue:        #4a90d9;
   --blue-light:  #e8f1fb;
   --orange:      #f59e0b;
+  --row-flagged: #fffbf0;
   --sidebar-w:   240px;
   --radius:      10px;
   --shadow:      0 1px 4px rgba(0,0,0,0.07);
+  --transition:  background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+  --bg:          #111113;
+  --surface:     #1c1c1f;
+  --border:      #2e2e33;
+  --text:        #e8e8ea;
+  --muted:       #888892;
+  --teal:        #27c28f;
+  --teal-light:  #0f2e22;
+  --purple:      #9d97e8;
+  --purple-light:#1a1836;
+  --red:         #f08080;
+  --red-light:   #2e1515;
+  --blue:        #6aaee8;
+  --blue-light:  #12233a;
+  --orange:      #fbbf24;
+  --row-flagged: #1e1a08;
+  --sidebar-w:   240px;
+  --radius:      10px;
+  --shadow:      0 1px 6px rgba(0,0,0,0.4);
+  --transition:  background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 html, body {
@@ -34,6 +62,7 @@ html, body {
   color: var(--text);
   font-size: 15px;
   line-height: 1.5;
+  transition: var(--transition);
 }
 
 a { color: var(--teal); text-decoration: none; }
@@ -126,6 +155,39 @@ a:hover { text-decoration: underline; }
 
 .nav-link.logout { color: var(--muted); }
 .nav-link.logout:hover { color: var(--red); background: var(--red-light); }
+
+/* ---- Theme toggle button ---------------------------------- */
+/* Sits in sidebar-footer; styled like a nav-link but is a <button> */
+.theme-toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  margin-bottom: 2px;
+  color: var(--muted);
+}
+.theme-toggle:hover { background: var(--bg); color: var(--text); }
+
+/* Mobile top-bar icon button */
+.mobile-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.theme-toggle-mobile {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--text);
+  flex-shrink: 0;
+}
+.theme-toggle-mobile:hover { background: var(--bg); }
 
 /* ---- Mobile nav toggle (CSS-only) ------------------------ */
 .nav-toggle-input { display: none; }
@@ -353,7 +415,7 @@ a:hover { text-decoration: underline; }
 .txn-table tr:last-child td { border-bottom: none; }
 .txn-table tr:hover td { background: var(--bg); }
 
-.row-flagged td { background: #fffbf0; }
+.row-flagged td { background: var(--row-flagged); }
 .row-excluded td { opacity: 0.55; }
 
 .num { text-align: right; }
@@ -600,7 +662,14 @@ a:hover { text-decoration: underline; }
   }
 
   .month-select-mobile {
-    max-width: 110px;
+    max-width: 100px;
+  }
+
+  .mobile-topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
   }
 
   /* Main content: no left margin, padded for top bar */
