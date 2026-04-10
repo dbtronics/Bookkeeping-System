@@ -39,19 +39,20 @@
     <h2>Add or change a rule</h2>
     <span class="badge-pill">AI</span>
   </div>
-  <p class="muted" style="margin-bottom: 1rem;">Describe the rule you want in plain English. Claude will generate the JSON and ask for confirmation before writing.</p>
-  <div class="nl-controls">
+  <p class="muted" style="margin-bottom:12px;">Describe the rule you want — e.g. "Always categorize GoHighLevel as SaaS tools for business."</p>
+  <div class="chat-window" id="rulesChat">
+    <div class="chat-empty">Describe a rule and I'll help you write it…</div>
+  </div>
+  <div class="chat-input-bar">
     <select id="ruleModel" class="model-select" title="Model">
-      <option value="claude-haiku-4-5-20251001">Haiku — fast &amp; cheap</option>
-      <option value="claude-sonnet-4-6">Sonnet — smarter</option>
+      <option value="claude-haiku-4-5-20251001">Haiku</option>
+      <option value="claude-sonnet-4-6">Sonnet</option>
     </select>
+    <input type="text" id="rulesInput" class="chat-input" placeholder="Describe a rule…">
+    <button id="rulesSend" class="chat-send-btn" title="Send">
+      <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+    </button>
   </div>
-  <div class="nl-query-area">
-    <input type="text" id="ruleInput" class="nl-input" placeholder="e.g. Always categorize GoHighLevel as SaaS tools for business">
-    <button class="btn btn-primary" onclick="proposeRule()">Propose</button>
-  </div>
-  <div id="ruleAnswer" class="nl-answer" style="display:none"></div>
-  <div id="ruleMeta" class="nl-meta" style="display:none"></div>
 </div>
 
 <!-- Active rules table -->
@@ -108,6 +109,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='chat.js') }}"></script>
 <script>
   async function approveRule(idx, suggestion) {
     const btn = document.querySelector(`#sug-${idx} .btn-approve`);
@@ -147,37 +149,12 @@
     }
   }
 
-  async function proposeRule() {
-    const q = document.getElementById('ruleInput').value.trim();
-    if (!q) return;
-    const model = document.getElementById('ruleModel').value;
-    const btn = document.querySelector('.nl-query-area .btn');
-    const box = document.getElementById('ruleAnswer');
-    const meta = document.getElementById('ruleMeta');
-    btn.disabled = true;
-    btn.textContent = 'Thinking…';
-    box.style.display = 'none';
-    meta.style.display = 'none';
-    try {
-      const res = await fetch('/query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q, model, scope: 'rules' })
-      });
-      const data = await res.json();
-      box.style.display = 'block';
-      box.textContent = data.answer || data.error || 'No response.';
-      if (data.model) {
-        const label = data.model.includes('haiku') ? 'Haiku' : 'Sonnet';
-        meta.style.display = 'block';
-        meta.textContent = `Answered by ${label}`;
-      }
-    } catch(e) {
-      box.style.display = 'block';
-      box.textContent = 'Error: ' + e.message;
-    }
-    btn.disabled = false;
-    btn.textContent = 'Propose';
-  }
+  initChat({
+    windowId:      'rulesChat',
+    inputId:       'rulesInput',
+    sendBtnId:     'rulesSend',
+    modelSelectId: 'ruleModel',
+    defaultScope:  'rules',
+  });
 </script>
 {% endblock %}

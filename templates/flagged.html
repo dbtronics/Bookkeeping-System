@@ -67,56 +67,33 @@
     <h2>Fix with natural language</h2>
     <span class="badge-pill">AI</span>
   </div>
-  <p class="muted" style="margin-bottom: 1rem;">Describe a correction and Claude will propose a rule. Example: "ROYAL PAAN is a restaurant, categorize as Living expenses."</p>
-  <div class="nl-controls">
+  <p class="muted" style="margin-bottom:12px;">Describe a correction — e.g. "ROYAL PAAN is a restaurant, categorize as Living expenses."</p>
+  <div class="chat-window" id="flaggedChat">
+    <div class="chat-empty">Describe a correction and I'll suggest a rule fix…</div>
+  </div>
+  <div class="chat-input-bar">
     <select id="fixModel" class="model-select" title="Model">
-      <option value="claude-haiku-4-5-20251001">Haiku — fast &amp; cheap</option>
-      <option value="claude-sonnet-4-6">Sonnet — smarter</option>
+      <option value="claude-haiku-4-5-20251001">Haiku</option>
+      <option value="claude-sonnet-4-6">Sonnet</option>
     </select>
+    <input type="text" id="flaggedInput" class="chat-input" placeholder="Describe a correction…">
+    <button id="flaggedSend" class="chat-send-btn" title="Send">
+      <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+    </button>
   </div>
-  <div class="nl-query-area">
-    <input type="text" id="fixInput" class="nl-input" placeholder="Describe a correction…">
-    <button class="btn btn-primary" onclick="sendFix()">Apply</button>
-  </div>
-  <div id="fixAnswer" class="nl-answer" style="display:none"></div>
-  <div id="fixMeta" class="nl-meta" style="display:none"></div>
 </div>
 
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='chat.js') }}"></script>
 <script>
-  async function sendFix() {
-    const q = document.getElementById('fixInput').value.trim();
-    if (!q) return;
-    const model = document.getElementById('fixModel').value;
-    const btn = document.querySelector('.nl-query-area .btn');
-    const box = document.getElementById('fixAnswer');
-    const meta = document.getElementById('fixMeta');
-    btn.disabled = true;
-    btn.textContent = 'Thinking…';
-    box.style.display = 'none';
-    meta.style.display = 'none';
-    try {
-      const res = await fetch('/query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q, model, scope: 'all' })
-      });
-      const data = await res.json();
-      box.style.display = 'block';
-      box.textContent = data.answer || data.error || 'No response.';
-      if (data.model) {
-        const label = data.model.includes('haiku') ? 'Haiku' : 'Sonnet';
-        meta.style.display = 'block';
-        meta.textContent = `Answered by ${label}`;
-      }
-    } catch(e) {
-      box.style.display = 'block';
-      box.textContent = 'Error: ' + e.message;
-    }
-    btn.disabled = false;
-    btn.textContent = 'Apply';
-  }
+  initChat({
+    windowId:      'flaggedChat',
+    inputId:       'flaggedInput',
+    sendBtnId:     'flaggedSend',
+    modelSelectId: 'fixModel',
+    defaultScope:  'all',
+  });
 </script>
 {% endblock %}

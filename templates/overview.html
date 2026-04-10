@@ -92,35 +92,39 @@
 </div>
 {% endif %}
 
-<!-- NL Query -->
+<!-- NL Chat -->
 <div class="card">
   <div class="card-header">
     <h2>Ask a question</h2>
-    <span class="badge-pill">AI</span>
+    <div style="display:flex;gap:6px;margin-left:auto;align-items:center;">
+      <select id="nlModel" class="model-select" title="Model">
+        <option value="claude-haiku-4-5-20251001">Haiku</option>
+        <option value="claude-sonnet-4-6">Sonnet</option>
+      </select>
+      <select id="nlScope" class="model-select" title="Scope">
+        <option value="all">All</option>
+        <option value="business">Business</option>
+        <option value="personal">Personal</option>
+      </select>
+      <span class="badge-pill">AI</span>
+    </div>
   </div>
-  <div class="nl-controls">
-    <select id="nlModel" class="model-select" title="Model">
-      <option value="claude-haiku-4-5-20251001">Haiku — fast &amp; cheap</option>
-      <option value="claude-sonnet-4-6">Sonnet — smarter</option>
-    </select>
-    <select id="nlScope" class="model-select" title="Scope">
-      <option value="all">All accounts</option>
-      <option value="business">Business only</option>
-      <option value="personal">Personal only</option>
-    </select>
+  <div class="chat-window" id="chatWindow">
+    <div class="chat-empty">Ask me anything about your finances…</div>
   </div>
-  <div class="nl-query-area">
-    <input type="text" id="nlInput" class="nl-input" placeholder="e.g. What did I spend on SaaS last month?">
-    <button class="btn btn-primary" onclick="sendQuery()">Ask</button>
+  <div class="chat-input-bar">
+    <input type="text" id="chatInput" class="chat-input" placeholder="e.g. What did I spend on SaaS last month?">
+    <button id="chatSend" class="chat-send-btn" title="Send">
+      <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+    </button>
   </div>
-  <div id="nlAnswer" class="nl-answer" style="display:none"></div>
-  <div id="nlMeta" class="nl-meta" style="display:none"></div>
 </div>
 
 {% endblock %}
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='chat.js') }}"></script>
 <script>
   {% if trend %}
   const trendData = {{ trend | tojson }};
@@ -166,42 +170,13 @@
   });
   {% endif %}
 
-  async function sendQuery() {
-    const q = document.getElementById('nlInput').value.trim();
-    if (!q) return;
-    const model = document.getElementById('nlModel').value;
-    const scope = document.getElementById('nlScope').value;
-    const btn = document.querySelector('.nl-query-area .btn');
-    const box = document.getElementById('nlAnswer');
-    const meta = document.getElementById('nlMeta');
-    btn.disabled = true;
-    btn.textContent = 'Thinking…';
-    box.style.display = 'none';
-    meta.style.display = 'none';
-    try {
-      const res = await fetch('/query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q, model, scope })
-      });
-      const data = await res.json();
-      box.style.display = 'block';
-      box.textContent = data.answer || data.error || 'No answer returned.';
-      if (data.model) {
-        const modelLabel = data.model.includes('haiku') ? 'Haiku' : 'Sonnet';
-        meta.style.display = 'block';
-        meta.textContent = `Answered by ${modelLabel} · scope: ${data.scope}`;
-      }
-    } catch(e) {
-      box.style.display = 'block';
-      box.textContent = 'Error: ' + e.message;
-    }
-    btn.disabled = false;
-    btn.textContent = 'Ask';
-  }
-
-  document.getElementById('nlInput').addEventListener('keydown', e => {
-    if (e.key === 'Enter') sendQuery();
+  initChat({
+    windowId:      'chatWindow',
+    inputId:       'chatInput',
+    sendBtnId:     'chatSend',
+    modelSelectId: 'nlModel',
+    scopeSelectId: 'nlScope',
+    defaultScope:  'all',
   });
 </script>
 {% endblock %}

@@ -459,6 +459,174 @@ a:hover { text-decoration: underline; }
 .conf-mid  { color: var(--orange); }
 .conf-high { color: var(--teal); }
 
+/* ---- Chat UI --------------------------------------------- */
+.chat-window {
+  height: 420px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 4px;
+  scroll-behavior: smooth;
+}
+
+.chat-empty {
+  margin: auto;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 24px 0;
+}
+
+/* Each row: user (right) or ai (left) */
+.chat-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.chat-row.user { flex-direction: row-reverse; }
+.chat-row.ai   { flex-direction: row; }
+
+/* Avatar pill for AI */
+.chat-avatar {
+  background: linear-gradient(135deg, var(--teal), var(--purple));
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  margin-bottom: 2px;
+}
+
+.chat-bubble-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 78%;
+}
+
+/* Bubble */
+.chat-bubble {
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-size: 14px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.chat-bubble.user {
+  background: var(--teal);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+  max-width: 78%;
+  margin-left: auto;
+}
+
+.chat-bubble.ai {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-bottom-left-radius: 4px;
+  box-shadow: var(--shadow);
+}
+
+.chat-bubble.error {
+  background: var(--red-light);
+  border-color: var(--red);
+  color: var(--red);
+}
+
+/* AI bubble text — markdown rendered */
+.chat-bubble.ai p  { margin: 0 0 6px; }
+.chat-bubble.ai p:last-child { margin-bottom: 0; }
+.chat-bubble.ai ul, .chat-bubble.ai ol {
+  padding-left: 18px;
+  margin: 4px 0;
+}
+.chat-bubble.ai li { margin-bottom: 2px; }
+.chat-bubble.ai strong { font-weight: 600; }
+
+/* Meta line under AI bubble */
+.chat-meta {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: 'DM Mono', monospace;
+  margin-top: 4px;
+  padding-left: 2px;
+}
+
+/* Thinking dots */
+.chat-bubble.thinking {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 16px;
+}
+
+.dot-pulse {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  display: inline-block;
+  animation: dotPulse 1.4s infinite ease-in-out;
+}
+.dot-pulse:nth-child(2) { animation-delay: 0.2s; }
+.dot-pulse:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dotPulse {
+  0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); }
+  40%           { opacity: 1;    transform: scale(1.1); }
+}
+
+/* Chat input bar */
+.chat-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+/* model-select inside input bar — shrink it */
+.chat-input-bar .model-select {
+  padding: 6px 8px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.chat-input {
+  flex: 1;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--bg);
+  color: var(--text);
+  resize: none;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.chat-input:focus { border-color: var(--teal); background: var(--surface); }
+
+.chat-send-btn {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--teal);
+  border: none;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.chat-send-btn:hover:not(:disabled) { opacity: 0.85; transform: scale(1.05); }
+.chat-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.chat-send-btn svg { width: 18px; height: 18px; fill: #fff; }
+
 /* ---- NL query -------------------------------------------- */
 .nl-controls {
   display: flex;
@@ -733,6 +901,11 @@ a:hover { text-decoration: underline; }
 
   /* Chart shorter on mobile */
   .chart-container { height: 160px; }
+
+  /* Chat window shorter on mobile */
+  .chat-window { height: 320px; }
+  .chat-bubble-wrap { max-width: 88%; }
+  .chat-bubble.user { max-width: 88%; }
 
   /* NL query stacks */
   .nl-query-area { flex-direction: column; }
