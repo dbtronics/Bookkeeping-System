@@ -78,6 +78,9 @@ ANTHROPIC_API_KEY=sk-ant-...
 # Password to log in to the dashboard
 DASHBOARD_PASSWORD=choose_a_strong_password
 
+# Set to true to bypass login entirely (useful for local dev/debugging)
+AUTO_LOGIN=false
+
 # Telegram bot for rule approvals and reports (can be left blank for now)
 TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_CHAT_ID=your_chat_id

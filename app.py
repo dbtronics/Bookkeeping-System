@@ -1,7 +1,7 @@
 import time
 from functools import wraps
 from flask import Flask, request, session, redirect, url_for, render_template, jsonify
-from config import DASHBOARD_PASSWORD, FLASK_SECRET_KEY, FLASK_PORT
+from config import DASHBOARD_PASSWORD, FLASK_SECRET_KEY, FLASK_PORT, AUTO_LOGIN
 from logger import get_logger
 
 log = get_logger("app")
@@ -28,7 +28,7 @@ def _log_request_end(response):
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not session.get("authenticated"):
+        if not AUTO_LOGIN and not session.get("authenticated"):
             return redirect(url_for("login"))
         return f(*args, **kwargs)
     return decorated
@@ -40,13 +40,22 @@ def login_required(f):
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    if AUTO_LOGIN:
+        session["authenticated"] = True
+        return redirect(url_for("dashboard.dashboard_overview"))
     error = None
     if request.method == "POST":
-        if request.form.get("password") == DASHBOARD_PASSWORD:
+        received = request.form.get("password", "")
+        log.info(
+            "Login attempt from %s | received=%r (len=%d) | expected len=%d | match=%s",
+            request.remote_addr, received, len(received),
+            len(DASHBOARD_PASSWORD or ""), received == DASHBOARD_PASSWORD
+        )
+        if received == DASHBOARD_PASSWORD:
             session["authenticated"] = True
             log.info("Login successful from %s", request.remote_addr)
             return redirect(url_for("dashboard.dashboard_overview"))
-        error = "Incorrect password."
+        error = "Incorrect password. Please try again."
         log.warning("Failed login attempt from %s", request.remote_addr)
     return render_template("login.html", error=error)
 

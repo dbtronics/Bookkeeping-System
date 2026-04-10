@@ -26,10 +26,10 @@
       })();
     </script>
     {% if error %}
-      <p class="error">{{ error }}</p>
+      <p class="login-error">{{ error }}</p>
     {% endif %}
     <form method="POST">
-      <input type="password" name="password" placeholder="Password" autofocus required>
+      <input type="password" name="password" placeholder="Password" autofocus required autocorrect="off" autocapitalize="none" spellcheck="false">
       <button type="submit">Sign in</button>
     </form>
   </div>

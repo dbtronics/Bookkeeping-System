@@ -903,6 +903,16 @@ a:hover { text-decoration: underline; }
 
 .login-box button:hover { opacity: 0.88; }
 .error { color: var(--red); font-size: 13px; margin-bottom: 12px; }
+.login-error {
+  color: var(--red);
+  background: rgba(220,53,69,0.1);
+  border: 1px solid rgba(220,53,69,0.35);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 14px;
+  margin-bottom: 14px;
+  text-align: center;
+}
 
 /* ============================================================
    MOBILE RESPONSIVE (<= 768px)

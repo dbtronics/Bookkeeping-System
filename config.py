@@ -28,6 +28,7 @@ NL_DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD")
 FLASK_SECRET_KEY   = os.environ.get("FLASK_SECRET_KEY", "change-me")
 FLASK_PORT         = int(os.environ.get("FLASK_PORT", 5000))
+AUTO_LOGIN         = os.environ.get("AUTO_LOGIN", "false").strip().lower() == "true"
 
 # Telegram
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
