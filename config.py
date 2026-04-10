@@ -17,6 +17,13 @@ HAIKU_MODEL          = "claude-haiku-4-5-20251001"
 SONNET_MODEL         = "claude-sonnet-4-6"
 CONFIDENCE_THRESHOLD = float(os.environ.get("CONFIDENCE_THRESHOLD", 0.7))
 
+# Models available for NL queries — ordered cheapest first
+NL_MODELS = [
+    {"id": "claude-haiku-4-5-20251001",  "label": "Haiku",  "note": "Fast · cheapest"},
+    {"id": "claude-sonnet-4-6",           "label": "Sonnet", "note": "Smarter · 5× cost"},
+]
+NL_DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+
 # Auth
 DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD")
 FLASK_SECRET_KEY   = os.environ.get("FLASK_SECRET_KEY", "change-me")

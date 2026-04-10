@@ -197,7 +197,7 @@ All dashboard routes accept an optional `?month=YYYY-MM` query parameter to filt
 - [x] Phase 7 — raw_processor.py (cron fallback for bank-transactions/raw/)
 - [x] Phase 8 — Dashboard aggregator (P&L totals from CSV by month/category/account)
 - [x] Phase 9 — Dashboard UI (overview, business, personal, flagged, rules — mobile-responsive)
-- [ ] Phase 10 — NL query (/query endpoint, Claude Sonnet)
+- [x] Phase 10 — NL query (/query endpoint, model-selectable — Haiku default)
 - [ ] Phase 11 — Rule proposal flow (/rules/propose, /rules/confirm, Telegram)
 - [ ] Phase 12 — Automated reports (weekly/monthly Telegram summary)
 

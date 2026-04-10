@@ -460,6 +460,32 @@ a:hover { text-decoration: underline; }
 .conf-high { color: var(--teal); }
 
 /* ---- NL query -------------------------------------------- */
+.nl-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.model-select {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.model-select:focus { outline: none; border-color: var(--teal); }
+
+.nl-meta {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+  font-family: 'DM Mono', monospace;
+}
+
 .nl-query-area {
   display: flex;
   gap: 10px;

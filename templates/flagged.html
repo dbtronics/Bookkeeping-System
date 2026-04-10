@@ -68,11 +68,18 @@
     <span class="badge-pill">AI</span>
   </div>
   <p class="muted" style="margin-bottom: 1rem;">Describe a correction and Claude will propose a rule. Example: "ROYAL PAAN is a restaurant, categorize as Living expenses."</p>
+  <div class="nl-controls">
+    <select id="fixModel" class="model-select" title="Model">
+      <option value="claude-haiku-4-5-20251001">Haiku — fast &amp; cheap</option>
+      <option value="claude-sonnet-4-6">Sonnet — smarter</option>
+    </select>
+  </div>
   <div class="nl-query-area">
     <input type="text" id="fixInput" class="nl-input" placeholder="Describe a correction…">
     <button class="btn btn-primary" onclick="sendFix()">Apply</button>
   </div>
   <div id="fixAnswer" class="nl-answer" style="display:none"></div>
+  <div id="fixMeta" class="nl-meta" style="display:none"></div>
 </div>
 
 {% endblock %}
@@ -82,22 +89,31 @@
   async function sendFix() {
     const q = document.getElementById('fixInput').value.trim();
     if (!q) return;
+    const model = document.getElementById('fixModel').value;
     const btn = document.querySelector('.nl-query-area .btn');
+    const box = document.getElementById('fixAnswer');
+    const meta = document.getElementById('fixMeta');
     btn.disabled = true;
     btn.textContent = 'Thinking…';
+    box.style.display = 'none';
+    meta.style.display = 'none';
     try {
       const res = await fetch('/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q, scope: 'all' })
+        body: JSON.stringify({ question: q, model, scope: 'all' })
       });
       const data = await res.json();
-      const box = document.getElementById('fixAnswer');
       box.style.display = 'block';
       box.textContent = data.answer || data.error || 'No response.';
+      if (data.model) {
+        const label = data.model.includes('haiku') ? 'Haiku' : 'Sonnet';
+        meta.style.display = 'block';
+        meta.textContent = `Answered by ${label}`;
+      }
     } catch(e) {
-      document.getElementById('fixAnswer').style.display = 'block';
-      document.getElementById('fixAnswer').textContent = 'Error: ' + e.message;
+      box.style.display = 'block';
+      box.textContent = 'Error: ' + e.message;
     }
     btn.disabled = false;
     btn.textContent = 'Apply';

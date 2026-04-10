@@ -92,17 +92,29 @@
 </div>
 {% endif %}
 
-<!-- NL Query stub -->
+<!-- NL Query -->
 <div class="card">
   <div class="card-header">
     <h2>Ask a question</h2>
     <span class="badge-pill">AI</span>
+  </div>
+  <div class="nl-controls">
+    <select id="nlModel" class="model-select" title="Model">
+      <option value="claude-haiku-4-5-20251001">Haiku — fast &amp; cheap</option>
+      <option value="claude-sonnet-4-6">Sonnet — smarter</option>
+    </select>
+    <select id="nlScope" class="model-select" title="Scope">
+      <option value="all">All accounts</option>
+      <option value="business">Business only</option>
+      <option value="personal">Personal only</option>
+    </select>
   </div>
   <div class="nl-query-area">
     <input type="text" id="nlInput" class="nl-input" placeholder="e.g. What did I spend on SaaS last month?">
     <button class="btn btn-primary" onclick="sendQuery()">Ask</button>
   </div>
   <div id="nlAnswer" class="nl-answer" style="display:none"></div>
+  <div id="nlMeta" class="nl-meta" style="display:none"></div>
 </div>
 
 {% endblock %}
@@ -157,22 +169,32 @@
   async function sendQuery() {
     const q = document.getElementById('nlInput').value.trim();
     if (!q) return;
+    const model = document.getElementById('nlModel').value;
+    const scope = document.getElementById('nlScope').value;
     const btn = document.querySelector('.nl-query-area .btn');
+    const box = document.getElementById('nlAnswer');
+    const meta = document.getElementById('nlMeta');
     btn.disabled = true;
     btn.textContent = 'Thinking…';
+    box.style.display = 'none';
+    meta.style.display = 'none';
     try {
       const res = await fetch('/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q, scope: 'all' })
+        body: JSON.stringify({ question: q, model, scope })
       });
       const data = await res.json();
-      const box = document.getElementById('nlAnswer');
       box.style.display = 'block';
       box.textContent = data.answer || data.error || 'No answer returned.';
+      if (data.model) {
+        const modelLabel = data.model.includes('haiku') ? 'Haiku' : 'Sonnet';
+        meta.style.display = 'block';
+        meta.textContent = `Answered by ${modelLabel} · scope: ${data.scope}`;
+      }
     } catch(e) {
-      document.getElementById('nlAnswer').style.display = 'block';
-      document.getElementById('nlAnswer').textContent = 'Error: ' + e.message;
+      box.style.display = 'block';
+      box.textContent = 'Error: ' + e.message;
     }
     btn.disabled = false;
     btn.textContent = 'Ask';
