@@ -290,21 +290,16 @@ The data summary sent to Claude includes: monthly P&L, category breakdown, top v
 | `/query/models` | GET | Yes | Returns available models + default |
 | `/ingest/receipt` | POST | No | n8n webhook — receipt ingestion |
 | `/ingest/transaction` | POST | No | n8n webhook — bank CSV ingestion |
-| `/rules/propose` | POST | Yes | Propose a rule (pending Telegram confirmation) |
-| `/rules/confirm` | POST | No | Telegram webhook — write confirmed rule |
+| `/rules/propose` | POST | Yes | Parse plain-English rule description via Claude, return rule JSON preview |
+| `/rules/save` | POST | Yes | Write a confirmed proposed rule to rules.json and apply to master CSV |
+| `/rules/approve` | POST | Yes | Approve a suggested rule (from AI batch suggestions) |
+| `/rules/dismiss` | POST | Yes | Dismiss a suggested rule |
+| `/rules/recategorize` | POST | Yes | Start background recategorize job (rules + Claude Haiku) |
+| `/rules/recategorize/status` | GET | Yes | Poll live progress of recategorize job |
 
 ---
 
 ## What's left to build
-
-### Phase 11 — Rule proposal via Telegram
-`/rules/propose` and `/rules/confirm` are stubbed. When a user describes a rule in the NL chat, the intent is to:
-1. Have Claude generate the rule JSON
-2. Send a Telegram message: *"New rule proposed: [description]. Reply YES to apply."*
-3. Save it to `rules_pending.json`
-4. On `/rules/confirm` (Telegram webhook), write it to `rules.json`
-
-Currently the chat on the Rules page answers in text only — no actual write happens.
 
 ### Phase 12 — Automated Telegram reports
 Weekly and monthly P&L summaries sent to the owner's Telegram chat automatically. Planned as a cron job calling a Flask endpoint or a standalone script.
@@ -335,7 +330,7 @@ The transaction tables on Business/Personal/Flagged are read-only. A future edit
 - [x] Phase 8 — Dashboard aggregator (P&L totals from CSV by month/category/account)
 - [x] Phase 9 — Dashboard UI (overview, business, personal, flagged, rules — mobile-responsive, dark/light theme, WhatsApp-style AI chat)
 - [x] Phase 10 — NL query (/query endpoint, model-selectable — Haiku default)
-- [ ] Phase 11 — Rule proposal flow (/rules/propose, /rules/confirm, Telegram)
+- [x] Phase 11 — NL rule creation from chat (describe a rule → Claude generates JSON → preview card → save to rules.json + apply to master CSV)
 - [ ] Phase 12 — Automated reports (weekly/monthly Telegram summary)
 
 ---
