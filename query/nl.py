@@ -6,8 +6,10 @@
 import csv
 import json
 import logging
+import re
 import time
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 
 import anthropic
@@ -27,6 +29,77 @@ log = get_logger("query.nl")
 # Valid model IDs (whitelist — never pass arbitrary user strings to the API)
 _VALID_MODEL_IDS = {m["id"] for m in NL_MODELS}
 
+# Month name → zero-padded month number
+_MONTH_NAMES = {
+    "january": "01", "jan": "01",
+    "february": "02", "feb": "02",
+    "march": "03", "mar": "03",
+    "april": "04", "apr": "04",
+    "may": "05",
+    "june": "06", "jun": "06",
+    "july": "07", "jul": "07",
+    "august": "08", "aug": "08",
+    "september": "09", "sep": "09", "sept": "09",
+    "october": "10", "oct": "10",
+    "november": "11", "nov": "11",
+    "december": "12", "dec": "12",
+}
+
+
+def _detect_month_filter(question, available_years):
+    """Detect a month reference in the question and return (YYYY-MM, note).
+
+    Handles:
+      - Named months: "january", "jan", etc.
+      - Explicit year: "january 2025" or "2025 january"
+      - "this month" / "last month" relative to today
+      - No mention → returns (None, None)
+
+    When a month is found but no year is stated, picks the most recent year
+    in available_years that contains that month, and returns a note so
+    Claude can tell the user what year was assumed.
+    """
+    q = question.lower()
+    today = datetime.now()
+
+    # "this month" / "last month"
+    if "this month" in q:
+        return today.strftime("%Y-%m"), None
+    if "last month" in q:
+        if today.month == 1:
+            return f"{today.year - 1}-12", None
+        return f"{today.year}-{today.month - 1:02d}", None
+
+    # Look for explicit YYYY-MM or MM-YYYY patterns
+    m = re.search(r'\b(20\d{2})[-/]?(0[1-9]|1[0-2])\b', q)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}", None
+
+    # Look for "month YYYY" or "YYYY month"
+    for name, num in _MONTH_NAMES.items():
+        pattern = rf'\b{name}\s+(20\d{{2}})\b|\b(20\d{{2}})\s+{name}\b'
+        m = re.search(pattern, q)
+        if m:
+            year = m.group(1) or m.group(2)
+            return f"{year}-{num}", None
+
+    # Month name only — no year stated
+    for name, num in _MONTH_NAMES.items():
+        if re.search(rf'\b{name}\b', q):
+            # Pick the most recent year in the data that has this month
+            candidates = [y for y in sorted(available_years, reverse=True)
+                          if f"{y}-{num}" in available_years.get(y, set())]
+            if candidates:
+                year = candidates[0]
+            elif available_years:
+                year = max(available_years.keys())
+            else:
+                year = today.year
+            note = f"No year specified — assuming {year} based on your data. Correct me if you meant a different year."
+            return f"{year}-{num}", note
+
+    return None, None
+
 
 def login_required(f):
     @wraps(f)
@@ -41,11 +114,25 @@ def login_required(f):
 # Data summary builder
 # ---------------------------------------------------------------------------
 
-def _build_summary(scope="all"):
+def _build_available_years(rows):
+    """Build {year: set_of_YYYY-MM} from all rows — used by month detector."""
+    available = defaultdict(set)
+    for r in rows:
+        date = r.get("date", "")
+        if len(date) >= 7:
+            year = int(date[:4])
+            ym = date[:7]
+            available[year].add(ym)
+    return dict(available)
+
+
+def _build_summary(scope="all", month_filter=None, month_note=None):
     """
     Read master_transactions.csv and produce a compact text summary
     Claude can reason over without seeing every raw row.
     scope: "all" | "business" | "personal"
+    month_filter: "YYYY-MM" string — when set, restricts all data to that month
+    month_note: string shown at top of summary when year was assumed
     """
     path = Path(MASTER_TRANSACTIONS_CSV)
     if not path.exists():
@@ -60,7 +147,13 @@ def _build_summary(scope="all"):
     elif scope == "personal":
         rows = [r for r in rows if r["account_type"] == "personal"]
 
+    # Filter by month — all sections below operate on this filtered set
+    if month_filter:
+        rows = [r for r in rows if r.get("date", "").startswith(month_filter)]
+
     if not rows:
+        if month_filter:
+            return f"No transactions found for {month_filter} (scope: {scope})."
         return f"No transactions found for scope: {scope}."
 
     def amt(r):
@@ -141,7 +234,20 @@ def _build_summary(scope="all"):
         for r in sorted(flagged_rows, key=lambda r: r["date"])
     ) or "  None"
 
-    summary = f"""BOOKKEEPING SUMMARY ({scope.upper()})
+    # All individual transactions — sorted by date so Claude can answer date-specific
+    # questions ("what date did I receive X", "break down January by transaction")
+    all_txn_lines = "\n".join(
+        f"  {r['date']}  {r['account_type']}/{r.get('card_type','')}  "
+        f"{r.get('vendor_name') or r.get('description', '?')}  "
+        f"${amt(r):,.2f}  [{r.get('category') or 'Uncategorized'}]"
+        f"{'  [excluded from P&L]' if r.get('exclude_from_pnl','').lower()=='true' else ''}"
+        for r in sorted(rows, key=lambda r: r["date"])
+    ) or "  None"
+
+    filter_label = f" — filtered to {month_filter}" if month_filter else ""
+    assumption_note = f"\nNOTE FOR CLAUDE: {month_note}" if month_note else ""
+
+    summary = f"""BOOKKEEPING SUMMARY ({scope.upper()}{filter_label}){assumption_note}
 Date range: {date_range}
 Total transactions: {len(rows)} ({len(pnl)} included in P&L, {len(excluded)} excluded from P&L, {flagged} flagged)
 Total in (P&L): ${total_in:,.2f}
@@ -165,6 +271,9 @@ TRANSACTIONS EXCLUDED FROM P&L (inter-account transfers, CC payments, owner draw
 
 FLAGGED TRANSACTIONS (low confidence or need review):
 {flagged_lines}
+
+ALL TRANSACTIONS (date / account / vendor / amount / category):
+{all_txn_lines}
 """
     return summary
 
@@ -264,10 +373,24 @@ def nl_query():
 
     try:
         t0 = time.time()
-        summary = _build_summary(effective_scope)
+
+        # Detect month mention in question — load all rows first to know available years
+        try:
+            with open(MASTER_TRANSACTIONS_CSV, newline="", encoding="utf-8") as f:
+                all_rows = list(csv.DictReader(f))
+        except OSError:
+            all_rows = []
+        available_years = _build_available_years(all_rows)
+        month_filter, month_note = _detect_month_filter(question, available_years)
+        if month_filter:
+            log.info("Month filter detected: %s%s", month_filter,
+                     " (year assumed)" if month_note else "")
+
+        summary = _build_summary(effective_scope, month_filter=month_filter, month_note=month_note)
         answer = _ask_claude(question, summary, model_id, history=history)
         elapsed = time.time() - t0
-        log.info("NL query answered in %.1fs | model=%s scope=%s", elapsed, model_id, scope)
+        log.info("NL query answered in %.1fs | model=%s scope=%s month=%s",
+                 elapsed, model_id, scope, month_filter or "all")
         return jsonify({"answer": answer, "model": model_id, "scope": scope})
     except Exception as e:
         log.error("NL query failed | model=%s | %s | error: %s", model_id, question[:60], e)
