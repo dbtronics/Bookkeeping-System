@@ -4,6 +4,166 @@ A self-hosted financial automation system for household and business bookkeeping
 
 ---
 
+## Getting Started
+
+Follow these steps to get the system running from scratch on a new device.
+
+### Prerequisites
+
+- Linux device (tested on Particle Tachyon)
+- [Miniforge](https://github.com/conda-forge/miniforge) or Miniconda installed
+- Nextcloud sync folder set up and actively syncing
+- Anthropic API key (get one at [console.anthropic.com](https://console.anthropic.com))
+
+### Step 1 — Clone the repo
+
+```bash
+git clone <repo-url> /home/<username>/Bookkeeping-System
+cd /home/<username>/Bookkeeping-System
+```
+
+### Step 2 — Create the conda environment
+
+```bash
+conda create -n bookkeeping-system-env python -y
+conda activate bookkeeping-system-env
+pip install -r requirements.txt
+```
+
+### Step 3 — Create the Nextcloud folder structure
+
+The app expects this layout inside your Nextcloud sync folder:
+
+```
+Nextcloud/Bookkeeping-System/
+├── bank-transactions/
+│   └── raw/           ← drop raw bank CSVs here
+├── master/
+│   └── rules/         ← rules.json lives here
+└── receipts/
+    └── raw/           ← n8n drop zone
+```
+
+Create it manually if it doesn't exist:
+
+```bash
+NEXTCLOUD=/home/<username>/Nextcloud/Bookkeeping-System
+mkdir -p "$NEXTCLOUD/bank-transactions/raw"
+mkdir -p "$NEXTCLOUD/master/rules"
+mkdir -p "$NEXTCLOUD/receipts/raw"
+```
+
+### Step 4 — Create rules.json
+
+Create an initial empty rules file at `$NEXTCLOUD/master/rules/rules.json`:
+
+```json
+{
+  "version": "1.0",
+  "last_updated": "2026-01-01",
+  "rules": []
+}
+```
+
+Rules are applied before Claude AI — any vendor you add here won't incur an API call.
+
+### Step 5 — Configure .env
+
+Create `/home/<username>/Bookkeeping-System/.env`. **Never commit this file.**
+
+```env
+# Claude API key — get from console.anthropic.com
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Password to log in to the dashboard
+DASHBOARD_PASSWORD=choose_a_strong_password
+
+# Telegram bot for rule approvals and reports (can be left blank for now)
+TELEGRAM_BOT_TOKEN=your_bot_token
+TELEGRAM_CHAT_ID=your_chat_id
+
+# Absolute path to your Nextcloud sync folder
+NEXTCLOUD_BASE=/home/<username>/Nextcloud/Bookkeeping-System
+
+# Random string used to sign session cookies
+# Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+FLASK_SECRET_KEY=your_random_secret_here
+
+# Port the Flask app listens on
+FLASK_PORT=5000
+
+# Confidence threshold below which Claude-categorized transactions get flagged
+CONFIDENCE_THRESHOLD=0.7
+```
+
+### Step 6 — Import your bank transactions
+
+Name raw CSV exports using this convention and drop them into `bank-transactions/raw/`:
+
+| Filename | Bank | Account |
+|---|---|---|
+| `cibc-business-cc.csv` | CIBC | Business credit card |
+| `cibc-business-dc.csv` | CIBC | Business chequing/debit |
+| `cibc-personal-cc.csv` | CIBC | Personal credit card |
+| `cibc-personal-dc.csv` | CIBC | Personal chequing/debit |
+| `cibc-personal-loc.csv` | CIBC | Personal line of credit |
+| `rbc-business-cc.csv` | RBC | Business credit card |
+| `rbc-business-dc.csv` | RBC | Business chequing/debit |
+
+Then run:
+
+```bash
+conda activate bookkeeping-system-env
+cd /home/<username>/Bookkeeping-System
+python raw_processor.py
+```
+
+This will organise files by month, categorise every transaction (rules first, Claude Haiku fallback), and populate `master_transactions.csv`. Check `bookkeeping.log` for details.
+
+### Step 7 — Run the app
+
+```bash
+conda activate bookkeeping-system-env
+cd /home/<username>/Bookkeeping-System
+
+# Development (foreground)
+python app.py
+
+# Production (background, survives terminal close)
+nohup python app.py >> bookkeeping.log 2>&1 &
+```
+
+Access the dashboard at `http://<device-ip>:5000` from any browser on your network.
+
+### Step 8 — (Optional) Run as a systemd service
+
+To have the app start automatically on boot:
+
+```ini
+# /etc/systemd/system/bookkeeping.service
+[Unit]
+Description=Bookkeeping System
+After=network.target
+
+[Service]
+User=<username>
+WorkingDirectory=/home/<username>/Bookkeeping-System
+ExecStart=/home/<username>/miniforge3/envs/bookkeeping-system-env/bin/python app.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable bookkeeping
+sudo systemctl start bookkeeping
+```
+
+---
+
 ## Architecture
 
 This system has two layers:
@@ -17,8 +177,8 @@ This system has two layers:
 
 1. **Ingest endpoints** — Flask webhooks that n8n calls after saving files to Nextcloud. Reads JSON sidecars, applies categorization rules, writes to master CSV files.
 2. **Dashboard** — Password-protected web app showing P&L by category, account type, and month.
-3. **Natural language queries** — Ask questions in plain English; Claude Sonnet answers using the master CSV as context.
-4. **Rule proposal flow** — Suggest new categorization rules from the dashboard; approve via Telegram before writing.
+3. **Natural language queries** — Ask questions in plain English; Claude (Haiku by default, Sonnet optional) answers using the master CSV as context.
+4. **Rule management** — Approve AI-suggested rules, write new rules in plain English, view all active rules in priority order.
 
 ---
 
@@ -27,138 +187,63 @@ This system has two layers:
 ```
 Bookkeeping-System/          ← This Git repo (project code)
 ├── app.py                   ← Flask entry point
-├── config.py                ← Paths, API keys, category lists
+├── config.py                ← Paths, API keys, category lists, NL model config
 ├── categorizer.py           ← Rules engine + Claude Haiku categorizer
-├── raw_processor.py         ← TEMPORARY: organizes raw bank CSVs until n8n is ready
-├── watcher.py               ← Standalone folder watcher / cron fallback
+├── csv_utils.py             ← Safe CSV read/append/dedup utilities
+├── raw_processor.py         ← TEMPORARY: organises raw bank CSVs until n8n is ready
 ├── requirements.txt
 ├── .env                     ← Secret values (never committed)
 ├── ingest/
 │   ├── receipts.py          ← POST /ingest/receipt
 │   └── transactions.py      ← POST /ingest/transaction
 ├── dashboard/
-│   ├── routes.py            ← /dashboard, /business, /personal, /receipts
-│   └── aggregator.py        ← CSV reader, P&L totals
+│   ├── routes.py            ← All dashboard routes + /rules API
+│   └── aggregator.py        ← CSV reader, P&L totals by month/category/account
 ├── query/
-│   └── nl.py                ← POST /query (Claude Sonnet NL handler)
-├── templates/               ← Jinja2 HTML templates
-└── static/                  ← CSS
+│   └── nl.py                ← POST /query — NL handler, builds summary, calls Claude
+├── templates/               ← Jinja2 HTML templates (base, overview, business, personal, flagged, rules)
+└── static/
+    ├── style.css            ← Full design system (light + dark theme via CSS variables)
+    ├── chat.js              ← Reusable WhatsApp-style chat widget
+    └── img/
+        ├── logo-light.png   ← Logo for light theme
+        └── logo-dark.png    ← Logo for dark theme
 
-Nextcloud/Bookkeeping-System/   ← Nextcloud sync folder (data lives here)
-├── receipts/
-│   ├── raw/                 ← n8n drop zone (never write here)
-│   └── YYYY/monthname/
+Nextcloud/Bookkeeping-System/   ← Nextcloud sync folder (data lives here, not in git)
 ├── bank-transactions/
-│   ├── raw/                 ← Drop raw bank CSVs here for raw_processor.py
+│   ├── raw/                 ← Drop raw bank CSVs here
 │   ├── personal/YYYY/monthname/
 │   └── business/YYYY/monthname/
 └── master/
     ├── master_transactions.csv
     ├── master_receipts.csv
     └── rules/
-        └── rules.json
+        ├── rules.json
+        └── rules_suggested.json   ← AI-detected patterns awaiting approval
 ```
-
----
-
-## Environment setup
-
-### 1. Create conda environment
-
-```bash
-conda create -n bookkeeping-system-env python -y
-conda activate bookkeeping-system-env
-pip install -r requirements.txt
-```
-
-### 2. Configure .env
-
-Create a `.env` file in the project root. **Never commit this file.**
-
-```env
-# Claude API key — get from console.anthropic.com
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Password to log in to the dashboard
-DASHBOARD_PASSWORD=choose_a_strong_password
-
-# Telegram bot for rule approvals and reports
-TELEGRAM_BOT_TOKEN=your_bot_token
-TELEGRAM_CHAT_ID=your_chat_id
-
-# Absolute path to your Nextcloud sync folder
-NEXTCLOUD_BASE=/home/particle/Nextcloud/Bookkeeping-System
-
-# Random string used to sign session cookies — generate with: python -c "import secrets; print(secrets.token_hex(32))"
-FLASK_SECRET_KEY=your_random_secret_here
-
-# Port the Flask app listens on
-FLASK_PORT=5000
-
-# Confidence threshold below which Claude-categorized transactions get flagged for review
-CONFIDENCE_THRESHOLD=0.7
-```
-
-### 3. Run the app
-
-```bash
-conda activate bookkeeping-system-env
-cd /home/particle/Bookkeeping-System
-
-# Foreground (development)
-flask --app app run --host 0.0.0.0 --port 5000
-
-# Background (persistent)
-nohup flask --app app run --host 0.0.0.0 --port 5000 >> bookkeeping.log 2>&1 &
-```
-
-Access at `http://<device-ip>:5000`
-
----
-
-## Temporary: processing raw bank CSVs
-
-Until n8n is configured to handle bank CSV ingestion, use `raw_processor.py` to manually process raw exports:
-
-1. Drop raw CSV files into `Nextcloud/Bookkeeping-System/bank-transactions/raw/`
-2. Run the processor:
-
-```bash
-conda activate bookkeeping-system-env
-cd /home/particle/Bookkeeping-System
-python raw_processor.py
-```
-
-This will:
-- Detect bank and account type from the filename
-- Split transactions by month
-- Write organized CSVs to the structured folder
-- Append new rows to `master_transactions.csv` (with dedup)
-
-**Supported filenames:** `cibc-business-cc.csv`, `cibc-business-dc.csv`, `cibc-personal-cc.csv`, `cibc-personal-dc.csv`, `cibc-personal-loc.csv`, `rbc-business-cc.csv`, `rbc-business-dc.csv`
-
-Disable this script once n8n is live and calling `/ingest/transaction` directly.
 
 ---
 
 ## Dashboard
 
-The dashboard is a password-protected web app served at `http://<device-ip>:5000`. All views support a `?month=YYYY-MM` filter via a dropdown in the top bar.
+Password-protected at `http://<device-ip>:5000`. All views support `?month=YYYY-MM` filtering.
 
-**Overview** — Combined KPIs (total in, total out, net), business and personal snapshots side by side, monthly trend bar chart (Chart.js), and a natural language query input powered by Claude Sonnet.
+**Overview** — Combined KPIs (total in, total out, net), business and personal snapshots, monthly trend bar chart, and a WhatsApp-style AI chat panel.
 
 **Business** — Revenue sources and expense breakdown by category as horizontal bar charts, top vendors by spend, full transaction table with categorization source (rule / AI / manual) and flagged indicators.
 
-**Personal** — Same layout as Business but for personal accounts — income sources, expense categories, vendor breakdown, transaction table.
+**Personal** — Same layout as Business but for personal accounts.
 
-**Flagged** — All transactions Claude categorized with confidence below 0.7, or that were flagged for other reasons. Shows confidence score colour-coded (red / amber / green) and flag reason. Includes an NL input to describe corrections.
+**Flagged** — Transactions Claude categorized with confidence below 0.7. Shows confidence score colour-coded (red / amber / green), flag reason, and an AI chat to describe corrections.
 
 **Rules** — Three sections:
-1. *Suggested rules* — patterns Claude identified during the last batch run (vendors it categorized the same way 2+ times). One-click approve (writes to `rules.json`) or dismiss.
-2. *NL rule editor* — describe a rule in plain English; Claude generates the JSON and proposes it for confirmation.
-3. *Active rules table* — full read-only view of all rules in priority order, showing match conditions, applied fields, and P&L inclusion status.
+1. *Suggested rules* — patterns Claude identified after each batch run. One-click approve or dismiss.
+2. *NL rule editor* — describe a rule in plain English via chat; Claude responds with what it would create.
+3. *Active rules table* — read-only view of all rules in priority order.
 
-**Design:** DM Sans + DM Mono fonts, cream background (`#f7f6f3`), teal (`#1d9e75`) for business, purple (`#7f77dd`) for personal. Fully mobile-responsive — sidebar collapses to a slide-in drawer with a hamburger menu on screens ≤ 768px.
+**AI chat** — Available on Overview, Flagged, and Rules pages. Model selector (Haiku default / Sonnet) on each chat. Enter to send, conversation history visible in session. Renders markdown (bold, lists, headings). The data summary sent to Claude includes: monthly P&L, category breakdown, top vendors, all excluded-from-P&L transactions, all flagged transactions.
+
+**Design:** DM Sans + DM Mono fonts, cream / dark background, teal for business, purple for personal. Theme toggle (light/dark) in sidebar + mobile top bar. Mobile-responsive — sidebar collapses to a slide-in drawer on screens ≤ 768px.
 
 ---
 
@@ -166,23 +251,50 @@ The dashboard is a password-protected web app served at `http://<device-ip>:5000
 
 | Route | Method | Auth | Description |
 |---|---|---|---|
-| `/health` | GET | No | Health check — returns `{"status": "ok"}` |
+| `/health` | GET | No | Health check |
 | `/login` | GET/POST | No | Dashboard login |
 | `/logout` | GET | No | Clear session |
-| `/` or `/dashboard` | GET | Yes | Overview — combined P&L, trend chart, NL query |
-| `/business` | GET | Yes | Business revenue, expenses by category, transaction table |
-| `/personal` | GET | Yes | Personal income, expenses by category, transaction table |
-| `/flagged` | GET | Yes | All flagged transactions needing review |
-| `/rules` | GET | Yes | Active rules table + suggested rules + NL rule editor |
-| `/rules/approve` | POST | Yes | Approve a suggested rule (adds to rules.json) |
+| `/` or `/dashboard` | GET | Yes | Overview — KPIs, trend chart, AI chat |
+| `/business` | GET | Yes | Business P&L, transaction table |
+| `/personal` | GET | Yes | Personal P&L, transaction table |
+| `/flagged` | GET | Yes | Flagged transactions + AI chat |
+| `/rules` | GET | Yes | Rules management + AI chat |
+| `/rules/approve` | POST | Yes | Approve a suggested rule |
 | `/rules/dismiss` | POST | Yes | Dismiss a suggested rule |
-| `/query` | POST | Yes | Natural language query (Claude Sonnet) |
-| `/ingest/receipt` | POST | No | n8n webhook — receipt |
-| `/ingest/transaction` | POST | No | n8n webhook — bank CSV |
-| `/rules/propose` | POST | Yes | Propose a new rule via Telegram |
-| `/rules/confirm` | POST | No | Telegram webhook — confirm rule |
+| `/query` | POST | Yes | NL query — accepts `question`, `model`, `scope` |
+| `/query/models` | GET | Yes | Returns available models + default |
+| `/ingest/receipt` | POST | No | n8n webhook — receipt ingestion |
+| `/ingest/transaction` | POST | No | n8n webhook — bank CSV ingestion |
+| `/rules/propose` | POST | Yes | Propose a rule (pending Telegram confirmation) |
+| `/rules/confirm` | POST | No | Telegram webhook — write confirmed rule |
 
-All dashboard routes accept an optional `?month=YYYY-MM` query parameter to filter by month.
+---
+
+## What's left to build
+
+### Phase 11 — Rule proposal via Telegram
+`/rules/propose` and `/rules/confirm` are stubbed. When a user describes a rule in the NL chat, the intent is to:
+1. Have Claude generate the rule JSON
+2. Send a Telegram message: *"New rule proposed: [description]. Reply YES to apply."*
+3. Save it to `rules_pending.json`
+4. On `/rules/confirm` (Telegram webhook), write it to `rules.json`
+
+Currently the chat on the Rules page answers in text only — no actual write happens.
+
+### Phase 12 — Automated Telegram reports
+Weekly and monthly P&L summaries sent to the owner's Telegram chat automatically. Planned as a cron job calling a Flask endpoint or a standalone script.
+
+### Inline transaction editing
+The transaction tables on Business/Personal/Flagged are read-only. A future edit flow would allow clicking a row to correct its category, vendor name, or P&L exclusion status directly. Currently corrections must be made by editing `master_transactions.csv` directly or by writing a rule.
+
+### Receipts
+`master_receipts.csv` and the `/ingest/receipt` endpoint exist but the receipts dashboard view is not built. Receipts ingestion (via n8n OCR) is a separate workstream.
+
+### n8n integration
+`raw_processor.py` is a temporary stand-in. Once n8n is configured, it will call `/ingest/transaction` directly after moving a CSV to the structured folder. `raw_processor.py` should then be disabled.
+
+### Bank support
+`raw_processor.py` currently supports CIBC and RBC CSV formats. Additional banks require adding a parser function to `FILE_CONFIGS` in `raw_processor.py`.
 
 ---
 
@@ -191,12 +303,12 @@ All dashboard routes accept an optional `?month=YYYY-MM` query parameter to filt
 - [x] Phase 1 — Project scaffold, config, login, /health
 - [x] Phase 2 — CSV utilities (safe read/append, dedup, create-if-missing)
 - [x] Phase 3 — Rules engine (load rules.json, match, archive before write)
-- [x] Phase 4 — Claude Haiku categorizer
+- [x] Phase 4 — Claude Haiku categorizer + rule suggestion after batch
 - [x] Phase 5 — /ingest/transaction endpoint
 - [x] Phase 6 — /ingest/receipt endpoint
 - [x] Phase 7 — raw_processor.py (cron fallback for bank-transactions/raw/)
 - [x] Phase 8 — Dashboard aggregator (P&L totals from CSV by month/category/account)
-- [x] Phase 9 — Dashboard UI (overview, business, personal, flagged, rules — mobile-responsive)
+- [x] Phase 9 — Dashboard UI (overview, business, personal, flagged, rules — mobile-responsive, dark/light theme, WhatsApp-style AI chat)
 - [x] Phase 10 — NL query (/query endpoint, model-selectable — Haiku default)
 - [ ] Phase 11 — Rule proposal flow (/rules/propose, /rules/confirm, Telegram)
 - [ ] Phase 12 — Automated reports (weekly/monthly Telegram summary)

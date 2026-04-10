@@ -23,8 +23,12 @@
 
   <nav class="sidebar">
     <div class="sidebar-header">
-      <span class="sidebar-logo">BK</span>
-      <span class="sidebar-title">Bookkeeping</span>
+      <div class="sidebar-logo-wrap">
+        <img id="sidebarLogo"
+             src="{{ url_for('static', filename='img/logo-light.png') }}"
+             alt="DBtronics Bookkeeping"
+             class="sidebar-logo-img">
+      </div>
       <label for="nav-toggle" class="nav-close">✕</label>
     </div>
 
@@ -65,7 +69,10 @@
     <label for="nav-toggle" class="hamburger">
       <span></span><span></span><span></span>
     </label>
-    <span class="mobile-title">{% block mobile_title %}Bookkeeping{% endblock %}</span>
+    <img id="mobileLogo"
+         src="{{ url_for('static', filename='img/logo-light.png') }}"
+         alt="DBtronics"
+         class="mobile-logo-img">
     <div class="mobile-topbar-right">
       {% if months is defined %}
       <select class="month-select-mobile" onchange="applyMonth(this.value)">
@@ -119,6 +126,9 @@
       updateThemeUI(next);
     }
 
+    var LOGO_LIGHT = "{{ url_for('static', filename='img/logo-light.png') }}";
+    var LOGO_DARK  = "{{ url_for('static', filename='img/logo-dark.png') }}";
+
     function updateThemeUI(theme) {
       var isDark = theme === 'dark';
       // Sidebar icon + label
@@ -132,6 +142,12 @@
       document.querySelectorAll('.theme-icon-mobile').forEach(function(el) {
         el.textContent = isDark ? '☽' : '☀';
       });
+      // Logos
+      var logoSrc = isDark ? LOGO_DARK : LOGO_LIGHT;
+      var sl = document.getElementById('sidebarLogo');
+      var ml = document.getElementById('mobileLogo');
+      if (sl) sl.src = logoSrc;
+      if (ml) ml.src = logoSrc;
     }
 
     // Set correct icon on load

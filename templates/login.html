@@ -12,7 +12,19 @@
 </head>
 <body class="login-page">
   <div class="login-box">
-    <h1>Bookkeeping System</h1>
+    <img id="loginLogo"
+         src="{{ url_for('static', filename='img/logo-light.png') }}"
+         alt="DBtronics Bookkeeping"
+         class="login-logo">
+    <script>
+      (function(){
+        var t = localStorage.getItem('bk-theme') || 'light';
+        var src = t === 'dark'
+          ? "{{ url_for('static', filename='img/logo-dark.png') }}"
+          : "{{ url_for('static', filename='img/logo-light.png') }}";
+        document.getElementById('loginLogo').src = src;
+      })();
+    </script>
     {% if error %}
       <p class="error">{{ error }}</p>
     {% endif %}
