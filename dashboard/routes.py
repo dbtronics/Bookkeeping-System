@@ -381,18 +381,18 @@ def rules_propose():
     per_cats = ", ".join(PERSONAL_CATEGORIES)
 
     prompt = f"""You are a rule generator for a household bookkeeping system.
-Convert the user's plain-English description into a rule JSON object.
+Convert the user's plain-English description into one or more rule JSON objects.
 
-Rule schema:
+Each rule has this schema:
 {{
   "description": "short human-readable label",
   "match": {{
     "vendor_name_contains": "keyword to find in bank description (lowercase)",
-    "account_type": "business OR personal — omit key if applies to both"
+    "account_type": "business OR personal — omit if applies to both"
   }},
   "apply": {{
-    "category":       "exact category from the valid list below",
-    "subcategory":    "optional short label",
+    "category":         "exact category from the valid list below",
+    "subcategory":      "optional short label",
     "exclude_from_pnl": false
   }}
 }}
@@ -400,17 +400,25 @@ Rule schema:
 Valid business categories: {biz_cats}
 Valid personal categories:  {per_cats}
 
-If you can generate a rule, return ONLY this JSON (no markdown):
+IMPORTANT GUIDELINES:
+- If the user names multiple vendors/sources, generate one rule per vendor — do NOT ask them to split the request.
+- Be liberal in inferring intent. If the user says "Upwork inbound as revenue", use vendor_name_contains: "upwork" and category: "Revenue".
+- Only return can_generate: false if you genuinely cannot determine the category or vendor keyword at all.
+- For inbound/income transactions on a business account, the category is almost always "Revenue".
+- For wire transfers, use vendor_name_contains: "wire" (or the most distinctive keyword in the description).
+- For eTransfer from a named person/company, use the name as the keyword.
+
+If you can generate rules, return ONLY this JSON (no markdown):
 {{
   "can_generate": true,
-  "explanation":  "one sentence — what this rule will do to matching transactions",
-  "rule": {{ ...rule object... }}
+  "explanation":  "one sentence summarising what these rules will do",
+  "rules": [ {{ ...rule object... }}, ... ]
 }}
 
-If the description is too vague, return ONLY:
+If you truly cannot infer enough to write even one rule, return ONLY:
 {{
   "can_generate": false,
-  "explanation":  "what extra info you need"
+  "explanation":  "what specific information you still need"
 }}
 
 User description: {desc}"""
@@ -419,7 +427,7 @@ User description: {desc}"""
         client   = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         response = client.messages.create(
             model=model_id,
-            max_tokens=512,
+            max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.content[0].text.strip()
@@ -430,14 +438,19 @@ User description: {desc}"""
 
         result = json.loads(raw)
 
+        # Normalise: accept both "rule" (singular) and "rules" (array)
+        if result.get("can_generate") and "rule" in result and "rules" not in result:
+            result["rules"] = [result.pop("rule")]
+
         pricing  = NL_MODEL_PRICING.get(model_id, {"input": 0.80, "output": 4.00})
         tok_in   = response.usage.input_tokens
         tok_out  = response.usage.output_tokens
         cost_usd = (tok_in * pricing["input"] + tok_out * pricing["output"]) / 1_000_000
         cost_cad = cost_usd * USD_TO_CAD
 
-        log.info("Rule proposed via chat | model=%s can_generate=%s | %s",
-                 model_id, result.get("can_generate"), desc[:60])
+        log.info("Rule proposed via chat | model=%s can_generate=%s rules=%d | %s",
+                 model_id, result.get("can_generate"),
+                 len(result.get("rules", [])), desc[:60])
 
         return jsonify({
             **result,

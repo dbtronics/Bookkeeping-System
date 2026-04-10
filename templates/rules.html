@@ -243,7 +243,7 @@
       scrollBottom();
     }
 
-    function appendRulePreview(explanation, rule, costStr) {
+    function appendRulePreview(rule) {
       var div = document.createElement('div');
       div.className = 'chat-row ai';
 
@@ -256,16 +256,12 @@
       }).join('');
 
       var ruleJson = JSON.stringify(rule);
-      var metaHtml = costStr
-        ? '<div class="chat-meta"><span class="chat-cost">' + costStr + '</span><span>Haiku</span></div>'
-        : '';
 
       div.innerHTML =
-        '<div class="chat-avatar">AI</div>' +
+        '<div class="chat-avatar" style="visibility:hidden">AI</div>' +
         '<div class="chat-bubble-wrap">' +
-          '<div class="chat-bubble ai">' + explanation.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>' +
           '<div class="rule-preview-card">' +
-            '<div class="rule-preview-label">Proposed rule — ' + (rule.description || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>' +
+            '<div class="rule-preview-label">' + (rule.description || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>' +
             '<div class="rule-preview-body">' +
               '<div class="rule-preview-section"><div class="rule-preview-heading">Match</div><div class="mono rule-match">' + matchLines + '</div></div>' +
               '<div class="rule-preview-section"><div class="rule-preview-heading">Apply</div><div class="mono rule-apply">' + applyLines + '</div></div>' +
@@ -275,7 +271,6 @@
               '<button class="btn btn-sm btn-dismiss rule-dismiss-btn">Dismiss</button>' +
             '</div>' +
           '</div>' +
-          metaHtml +
         '</div>';
       win.appendChild(div);
       scrollBottom();
@@ -369,7 +364,13 @@
           }
 
           if (data.can_generate) {
-            appendRulePreview(data.explanation || '', data.rule || {}, costStr);
+            var rules = data.rules || (data.rule ? [data.rule] : []);
+            // Show explanation as a plain AI message first
+            appendAiMsg(data.explanation || '', costStr);
+            // Then show one preview card per rule
+            rules.forEach(function(rule) {
+              appendRulePreview(rule);
+            });
           } else {
             appendAiMsg(data.explanation || 'Could not generate a rule — please provide more detail.', costStr);
           }
