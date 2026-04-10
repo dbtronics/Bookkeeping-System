@@ -17,7 +17,8 @@ from csv_utils import (
     TRANSACTION_HEADERS, ensure_csv, append_row,
     load_transaction_state, is_duplicate, register_transaction
 )
-from categorizer import load_rules, categorize
+from categorizer import load_rules, categorize, suggest_rules
+from csv_utils import read_csv
 
 load_dotenv()
 
@@ -210,6 +211,13 @@ def main():
     for f in files:
         print(f"→ {f.name}")
         process_file(f, existing_keys, id_counter, rules)
+
+    # After all files are processed, surface AI categorization patterns as rule suggestions
+    all_rows = read_csv(MASTER_CSV)
+    ai_rows = [r for r in all_rows if r.get("categorized_by") == "ai"]
+    if ai_rows:
+        suggest_rules(ai_rows)
+
     print("\nDone. Check bookkeeping.log for details.")
 
 
