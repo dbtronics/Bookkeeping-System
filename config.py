@@ -42,6 +42,18 @@ RULE_SUGGESTION_MIN  = 2   # categorizer.py → suggest_rules()
 
 
 # =============================================================================
+# MODEL PRICING — USD per 1 million tokens
+# Used by: query/nl.py to calculate per-message and session cost
+# Update these if Anthropic changes their pricing (console.anthropic.com/settings/billing)
+# =============================================================================
+NL_MODEL_PRICING = {
+    "claude-haiku-4-5-20251001": {"input": 0.80,  "output": 4.00},
+    "claude-sonnet-4-6":         {"input": 3.00,  "output": 15.00},
+}
+USD_TO_CAD = 1.38   # rough exchange rate — update as needed
+
+
+# =============================================================================
 # NL QUERY — Models available in the chat UI
 # NL_MODELS        : ordered cheapest first — drives the model selector dropdown
 # NL_DEFAULT_MODEL : pre-selected model on page load

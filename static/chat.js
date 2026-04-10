@@ -17,6 +17,32 @@ function initChat(cfg) {
   var btn     = document.getElementById(cfg.sendBtnId);
   var history = [];  // [{role:'user'|'assistant', content:'...'}]
 
+  // Session cost tracking
+  var session = { inputTokens: 0, outputTokens: 0, costUsd: 0, costCad: 0 };
+
+  // Find the card-header that contains this chat's controls and inject a cost display
+  var chatCard   = win.closest('.card');
+  var cardHeader = chatCard ? chatCard.querySelector('.card-header') : null;
+  var costEl = null;
+  if (cardHeader) {
+    costEl = document.createElement('span');
+    costEl.className = 'session-cost';
+    costEl.title = 'Total token cost for this chat session';
+    costEl.textContent = 'Session: $0.00 CAD';
+    cardHeader.appendChild(costEl);
+  }
+
+  function updateSessionCost() {
+    if (!costEl) return;
+    costEl.innerHTML =
+      '<span class="cost-detail">' +
+        session.inputTokens.toLocaleString() + ' in / ' +
+        session.outputTokens.toLocaleString() + ' out' +
+      '</span>' +
+      ' &nbsp;Session: <strong>$' + session.costCad.toFixed(4) + ' CAD</strong>' +
+      ' <span class="cost-usd">($' + session.costUsd.toFixed(4) + ' USD)</span>';
+  }
+
   function modelVal() {
     var el = cfg.modelSelectId && document.getElementById(cfg.modelSelectId);
     return el ? el.value : 'claude-haiku-4-5-20251001';
@@ -112,12 +138,16 @@ function initChat(cfg) {
     if (el) el.remove();
   }
 
-  function appendAiMsg(text, meta) {
+  function appendAiMsg(text, meta, cost) {
     var div = document.createElement('div');
     div.className = 'chat-row ai';
-    var metaHtml = meta
-      ? '<div class="chat-meta">' + meta + '</div>'
-      : '';
+    var metaHtml = '';
+    if (meta || cost) {
+      metaHtml = '<div class="chat-meta">';
+      if (meta) metaHtml += '<span>' + meta + '</span>';
+      if (cost) metaHtml += '<span class="chat-cost">' + cost + '</span>';
+      metaHtml += '</div>';
+    }
     div.innerHTML =
       '<div class="chat-avatar">AI</div>' +
       '<div class="chat-bubble-wrap">' +
@@ -174,10 +204,28 @@ function initChat(cfg) {
       } else {
         var answer = data.answer || 'No answer returned.';
         history.push({ role: 'assistant', content: answer });
+
+        // Model + scope meta
         var modelLabel = (data.model || '').includes('haiku') ? 'Haiku' : 'Sonnet';
         var scopeLabel = data.scope || '';
         var meta = modelLabel + (scopeLabel ? ' · ' + scopeLabel : '');
-        appendAiMsg(answer, meta);
+
+        // Per-message cost
+        var costStr = '';
+        if (data.tokens && data.cost_cad !== undefined) {
+          var t = data.tokens;
+          session.inputTokens  += t.input  || 0;
+          session.outputTokens += t.output || 0;
+          session.costUsd      += data.cost_usd || 0;
+          session.costCad      += data.cost_cad || 0;
+          updateSessionCost();
+          costStr =
+            t.input.toLocaleString() + ' in / ' +
+            t.output.toLocaleString() + ' out · ' +
+            '$' + data.cost_cad.toFixed(4) + ' CAD';
+        }
+
+        appendAiMsg(answer, meta, costStr);
       }
     } catch (e) {
       history.pop();  // remove failed message from history

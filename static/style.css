@@ -562,7 +562,27 @@ a:hover { text-decoration: underline; }
   font-family: 'DM Mono', monospace;
   margin-top: 4px;
   padding-left: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
+.chat-cost {
+  color: var(--teal);
+  opacity: 0.85;
+}
+
+/* Session cost display in card-header */
+.session-cost {
+  font-size: 11px;
+  font-family: 'DM Mono', monospace;
+  color: var(--muted);
+  margin-left: 8px;
+  white-space: nowrap;
+}
+.session-cost strong { color: var(--text); }
+.session-cost .cost-detail { opacity: 0.7; }
+.session-cost .cost-usd { opacity: 0.6; font-size: 10px; }
 
 /* Thinking dots */
 .chat-bubble.thinking {

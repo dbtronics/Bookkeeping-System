@@ -20,6 +20,7 @@ from config import (
     ANTHROPIC_API_KEY, MASTER_TRANSACTIONS_CSV,
     NL_MODELS, NL_DEFAULT_MODEL, NL_MAX_TOKENS,
     NL_HISTORY_LIMIT, NL_TOP_VENDORS, NL_TOP_INCOME,
+    NL_MODEL_PRICING, USD_TO_CAD,
 )
 from logger import get_logger
 
@@ -331,8 +332,11 @@ def _ask_claude(question, summary, model_id, history=None):
                 system=system,
                 messages=messages,
             )
-            return response.content[0].text.strip()
-        except anthropic.RateLimitError as e:
+            answer = response.content[0].text.strip()
+            input_tokens  = response.usage.input_tokens
+            output_tokens = response.usage.output_tokens
+            return answer, input_tokens, output_tokens
+        except anthropic.RateLimitError:
             if attempt == 0:
                 log.warning("Rate limit hit — waiting 60s then retrying once")
                 time.sleep(60)
@@ -405,11 +409,32 @@ def nl_query():
                      " (year assumed)" if month_note else "")
 
         summary = _build_summary(effective_scope, month_filter=month_filter, month_note=month_note)
-        answer = _ask_claude(question, summary, model_id, history=history)
+        answer, input_tokens, output_tokens = _ask_claude(question, summary, model_id, history=history)
+
+        # Cost calculation
+        pricing = NL_MODEL_PRICING.get(model_id, {"input": 0, "output": 0})
+        cost_usd = (input_tokens * pricing["input"] + output_tokens * pricing["output"]) / 1_000_000
+        cost_cad = cost_usd * USD_TO_CAD
+
         elapsed = time.time() - t0
-        log.info("NL query answered in %.1fs | model=%s scope=%s month=%s",
-                 elapsed, model_id, scope, month_filter or "all")
-        return jsonify({"answer": answer, "model": model_id, "scope": scope})
+        log.info(
+            "NL query answered in %.1fs | model=%s scope=%s month=%s | "
+            "tokens in=%d out=%d | cost $%.5f USD ($%.5f CAD)",
+            elapsed, model_id, scope, month_filter or "all",
+            input_tokens, output_tokens, cost_usd, cost_cad
+        )
+        return jsonify({
+            "answer":        answer,
+            "model":         model_id,
+            "scope":         scope,
+            "tokens": {
+                "input":  input_tokens,
+                "output": output_tokens,
+                "total":  input_tokens + output_tokens,
+            },
+            "cost_usd": round(cost_usd, 6),
+            "cost_cad": round(cost_cad, 6),
+        })
     except Exception as e:
         log.error("NL query failed | model=%s | %s | error: %s", model_id, question[:60], e)
         return jsonify({"error": f"Query failed: {str(e)}"}), 500
