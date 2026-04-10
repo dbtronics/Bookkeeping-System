@@ -323,14 +323,21 @@ def _ask_claude(question, summary, model_id, history=None):
             "content": f"Here is the financial data summary:\n\n{summary}\n\nQuestion: {question}"
         })
 
-    response = client.messages.create(
-        model=model_id,
-        max_tokens=NL_MAX_TOKENS,
-        system=system,
-        messages=messages,
-    )
-
-    return response.content[0].text.strip()
+    for attempt in range(2):
+        try:
+            response = client.messages.create(
+                model=model_id,
+                max_tokens=NL_MAX_TOKENS,
+                system=system,
+                messages=messages,
+            )
+            return response.content[0].text.strip()
+        except anthropic.RateLimitError as e:
+            if attempt == 0:
+                log.warning("Rate limit hit — waiting 60s then retrying once")
+                time.sleep(60)
+            else:
+                raise
 
 
 # ---------------------------------------------------------------------------
@@ -374,16 +381,27 @@ def nl_query():
     try:
         t0 = time.time()
 
-        # Detect month mention in question — load all rows first to know available years
+        # Detect month — check current question first, then walk back through history
         try:
             with open(MASTER_TRANSACTIONS_CSV, newline="", encoding="utf-8") as f:
                 all_rows = list(csv.DictReader(f))
         except OSError:
             all_rows = []
         available_years = _build_available_years(all_rows)
+
         month_filter, month_note = _detect_month_filter(question, available_years)
+        if not month_filter:
+            # Inherit month from the most recent user turn that mentioned one
+            for turn in reversed(history):
+                if turn["role"] == "user":
+                    inherited, _ = _detect_month_filter(turn["content"], available_years)
+                    if inherited:
+                        month_filter = inherited
+                        log.info("Month inherited from history: %s", month_filter)
+                        break
+
         if month_filter:
-            log.info("Month filter detected: %s%s", month_filter,
+            log.info("Month filter: %s%s", month_filter,
                      " (year assumed)" if month_note else "")
 
         summary = _build_summary(effective_scope, month_filter=month_filter, month_note=month_note)
