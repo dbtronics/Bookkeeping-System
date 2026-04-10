@@ -24,8 +24,8 @@
         </div>
       </div>
       <div class="sug-actions">
-        <button class="btn btn-sm btn-approve" onclick="approveRule({{ loop.index }}, {{ s | tojson }})">Approve</button>
-        <button class="btn btn-sm btn-dismiss" onclick="dismissRule({{ loop.index }}, {{ s | tojson }})">Dismiss</button>
+        <button class="btn btn-sm btn-approve" data-sug='{{ s | tojson }}' onclick="approveRule(this)">Approve</button>
+        <button class="btn btn-sm btn-dismiss" data-sug='{{ s | tojson }}' onclick="dismissRule(this)">Dismiss</button>
       </div>
     </div>
     {% endfor %}
@@ -114,8 +114,9 @@
 <script>
   initPagination('rules-table');
 
-  async function approveRule(idx, suggestion) {
-    const btn = document.querySelector(`#sug-${idx} .btn-approve`);
+  async function approveRule(btn) {
+    const suggestion = JSON.parse(btn.dataset.sug);
+    const row = btn.closest('.suggestion-row');
     btn.disabled = true;
     btn.textContent = 'Saving…';
     try {
@@ -126,28 +127,33 @@
       });
       const data = await res.json();
       if (data.status === 'ok') {
-        document.getElementById(`sug-${idx}`).style.opacity = '0.4';
+        row.style.opacity = '0.4';
         btn.textContent = 'Approved ✓';
       } else {
-        btn.textContent = 'Error';
+        btn.disabled = false;
+        btn.textContent = 'Approve';
         alert(data.error || 'Failed to approve rule.');
       }
     } catch(e) {
-      btn.textContent = 'Error';
+      btn.disabled = false;
+      btn.textContent = 'Approve';
       alert(e.message);
     }
   }
 
-  async function dismissRule(idx, suggestion) {
-    const row = document.getElementById(`sug-${idx}`);
+  async function dismissRule(btn) {
+    const suggestion = JSON.parse(btn.dataset.sug);
+    const row = btn.closest('.suggestion-row');
+    btn.disabled = true;
     try {
-      await fetch('/rules/dismiss', {
+      const res = await fetch('/rules/dismiss', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(suggestion)
       });
       row.style.display = 'none';
     } catch(e) {
+      btn.disabled = false;
       alert(e.message);
     }
   }
