@@ -16,7 +16,8 @@ from functools import wraps
 
 from config import (
     ANTHROPIC_API_KEY, MASTER_TRANSACTIONS_CSV,
-    NL_MODELS, NL_DEFAULT_MODEL,
+    NL_MODELS, NL_DEFAULT_MODEL, NL_MAX_TOKENS,
+    NL_HISTORY_LIMIT, NL_TOP_VENDORS, NL_TOP_INCOME,
 )
 from logger import get_logger
 
@@ -106,7 +107,7 @@ def _build_summary(scope="all"):
             name = r.get("vendor_name") or r.get("description", "Unknown")
             by_vendor[name] += abs(amt(r))
 
-    top_vendors = sorted(by_vendor.items(), key=lambda x: x[1], reverse=True)[:15]
+    top_vendors = sorted(by_vendor.items(), key=lambda x: x[1], reverse=True)[:NL_TOP_VENDORS]
     vendor_lines = "\n".join(f"  {v}: ${a:,.2f}" for v, a in top_vendors)
 
     # Top income sources
@@ -116,7 +117,7 @@ def _build_summary(scope="all"):
             name = r.get("vendor_name") or r.get("description", "Unknown")
             by_income[name] += amt(r)
 
-    top_income = sorted(by_income.items(), key=lambda x: x[1], reverse=True)[:10]
+    top_income = sorted(by_income.items(), key=lambda x: x[1], reverse=True)[:NL_TOP_INCOME]
     income_lines = "\n".join(f"  {v}: ${a:,.2f}" for v, a in top_income)
 
     # Flagged count
@@ -215,7 +216,7 @@ def _ask_claude(question, summary, model_id, history=None):
 
     response = client.messages.create(
         model=model_id,
-        max_tokens=1024,
+        max_tokens=NL_MAX_TOKENS,
         system=system,
         messages=messages,
     )
@@ -257,7 +258,7 @@ def nl_query():
         {"role": h["role"], "content": str(h["content"])}
         for h in history
         if isinstance(h, dict) and h.get("role") in ("user", "assistant") and h.get("content")
-    ][-20:]
+    ][-NL_HISTORY_LIMIT:]
 
     log.info("NL query | model=%s scope=%s history=%d | %s", model_id, scope, len(history), question[:80])
 
@@ -280,5 +281,4 @@ def nl_query():
 @query_bp.route("/query/models", methods=["GET"])
 @login_required
 def query_models():
-    from config import NL_MODELS, NL_DEFAULT_MODEL
     return jsonify({"models": NL_MODELS, "default": NL_DEFAULT_MODEL})

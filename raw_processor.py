@@ -5,12 +5,10 @@ Reads raw bank CSVs → splits by month → writes to organized folder structure
 → appends new rows to master_transactions.csv with dedup + categorization.
 Disable this once n8n + /ingest/transaction endpoint is live.
 """
-import os
 import csv
 import time
 from datetime import datetime
 from pathlib import Path
-from dotenv import load_dotenv
 
 from logger import get_logger
 from csv_utils import (
@@ -18,11 +16,8 @@ from csv_utils import (
     load_transaction_state, is_duplicate, register_transaction, read_csv,
 )
 from categorizer import load_rules, categorize, suggest_rules
-
-load_dotenv()
+from config import NEXTCLOUD_BASE, HAIKU_COST_PER_CALL
 log = get_logger("raw_processor")
-
-NEXTCLOUD_BASE = Path(os.environ["NEXTCLOUD_BASE"])
 RAW_DIR        = NEXTCLOUD_BASE / "bank-transactions" / "raw"
 MASTER_CSV     = NEXTCLOUD_BASE / "master" / "master_transactions.csv"
 
@@ -42,10 +37,6 @@ FILE_CONFIGS = {
     "rbc-business-cc":   ("RBC",  "business", "credit",   "rbc"),
     "rbc-business-dc":   ("RBC",  "business", "chequing", "rbc"),
 }
-
-# Rough cost estimate for Haiku (~$0.001 per categorization call)
-HAIKU_COST_PER_CALL = 0.001
-
 
 # ---------------------------------------------------------------------------
 # Parsers

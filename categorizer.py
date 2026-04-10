@@ -49,12 +49,11 @@ import anthropic
 from logger import get_logger
 
 from config import (
-    RULES_JSON, RULES_ARCHIVE_DIR,
+    RULES_JSON, RULES_ARCHIVE_DIR, SUGGESTED_RULES_FILE,
     ANTHROPIC_API_KEY, HAIKU_MODEL,
-    CONFIDENCE_THRESHOLD, ALL_CATEGORIES
+    CONFIDENCE_THRESHOLD, CATEGORIZER_MAX_TOKENS,
+    RULE_SUGGESTION_MIN, ALL_CATEGORIES,
 )
-
-SUGGESTED_RULES_FILE = RULES_ARCHIVE_DIR.parent / "rules_suggested.json"
 
 log = get_logger("categorizer")
 
@@ -244,7 +243,7 @@ Guidelines:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         message = client.messages.create(
             model=HAIKU_MODEL,
-            max_tokens=256,
+            max_tokens=CATEGORIZER_MAX_TOKENS,
             messages=[{"role": "user", "content": prompt}]
         )
         raw = message.content[0].text.strip()
@@ -333,7 +332,7 @@ def suggest_rules(ai_categorized_rows):
     # Threshold: seen 2+ times → worth suggesting as a rule
     suggestions = []
     for (vendor, account_type, category, subcategory), count in counts.items():
-        if count >= 2 and vendor and category and category != "Uncategorized":
+        if count >= RULE_SUGGESTION_MIN and vendor and category and category != "Uncategorized":
             suggestions.append({
                 "vendor_name":  vendor,
                 "account_type": account_type,
