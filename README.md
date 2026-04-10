@@ -173,12 +173,25 @@ This system has two layers:
 
 ---
 
-## What this app does
+## Key files and what they do
 
-1. **Ingest endpoints** — Flask webhooks that n8n calls after saving files to Nextcloud. Reads JSON sidecars, applies categorization rules, writes to master CSV files.
-2. **Dashboard** — Password-protected web app showing P&L by category, account type, and month.
-3. **Natural language queries** — Ask questions in plain English; Claude (Haiku by default, Sonnet optional) answers using the master CSV as context.
-4. **Rule management** — Approve AI-suggested rules, write new rules in plain English, view all active rules in priority order.
+### `raw_processor.py`
+The main data pipeline. Run this whenever you have new bank exports to process. It does everything in sequence:
+1. Scans `bank-transactions/raw/` for CSV files
+2. Parses each file (CIBC and RBC formats supported)
+3. Splits transactions by month and writes organised CSVs to `bank-transactions/business/` or `bank-transactions/personal/`
+4. For each transaction, runs it through the rules engine first (free, instant) — if no rule matches, calls Claude Haiku to categorize it
+5. Appends only new rows to `master_transactions.csv` — duplicate detection is automatic
+6. Writes `rules_suggested.json` with vendor patterns Claude identified for one-click rule approval in the dashboard
+
+Safe to run any time. Already-processed rows are skipped instantly (no API calls for duplicates). Logs everything to `bookkeeping.log`.
+
+### `app.py`
+The web dashboard. Reads `master_transactions.csv` on every page load and serves the UI. It does not process any raw files — it only reads what `raw_processor.py` has already written.
+
+Serves five views: Overview (combined P&L + trend chart + AI chat), Business, Personal, Flagged transactions, and Rules management. Also exposes the `/query` endpoint for natural language questions answered by Claude.
+
+Run with `./run.sh` — this runs `raw_processor.py` first, then starts the dashboard.
 
 ---
 
@@ -304,8 +317,8 @@ The transaction tables on Business/Personal/Flagged are read-only. A future edit
 - [x] Phase 2 — CSV utilities (safe read/append, dedup, create-if-missing)
 - [x] Phase 3 — Rules engine (load rules.json, match, archive before write)
 - [x] Phase 4 — Claude Haiku categorizer + rule suggestion after batch
-- [x] Phase 5 — /ingest/transaction endpoint
-- [x] Phase 6 — /ingest/receipt endpoint
+- [ ] Phase 5 — /ingest/transaction endpoint (stubbed — returns 501, built by n8n integration)
+- [ ] Phase 6 — /ingest/receipt endpoint (stubbed — returns 501, built by n8n integration)
 - [x] Phase 7 — raw_processor.py (cron fallback for bank-transactions/raw/)
 - [x] Phase 8 — Dashboard aggregator (P&L totals from CSV by month/category/account)
 - [x] Phase 9 — Dashboard UI (overview, business, personal, flagged, rules — mobile-responsive, dark/light theme, WhatsApp-style AI chat)
