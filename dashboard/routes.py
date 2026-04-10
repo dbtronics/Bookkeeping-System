@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 from functools import wraps
 from pathlib import Path
 
@@ -7,6 +8,10 @@ from flask import Blueprint, session, redirect, url_for, render_template, reques
 
 from config import RULES_JSON, RULES_ARCHIVE_DIR
 from dashboard.aggregator import get_overview, get_business, get_personal, get_flagged
+
+# Shared state for the recategorize background job (single-user app)
+_recategorize_state = {}
+_recategorize_lock  = threading.Lock()
 
 dashboard_bp = Blueprint("dashboard", __name__)
 log = logging.getLogger(__name__)
@@ -188,6 +193,38 @@ def rules_approve():
     except Exception as e:
         log.error("Failed to approve rule: %s", e)
         return jsonify({"error": str(e)}), 500
+
+
+@dashboard_bp.route("/rules/recategorize", methods=["POST"])
+@login_required
+def rules_recategorize():
+    """Start a background recategorize job. Returns immediately."""
+    global _recategorize_state
+    with _recategorize_lock:
+        if _recategorize_state.get("running"):
+            return jsonify({"error": "Already running"}), 409
+        _recategorize_state = {"running": True, "done": False, "processed": 0, "total": 0}
+
+    def _run():
+        global _recategorize_state
+        try:
+            from recategorize import recategorize
+            recategorize(progress=_recategorize_state)
+        except Exception as e:
+            log.error("Recategorize failed: %s", e)
+            _recategorize_state["error"] = str(e)
+            _recategorize_state["running"] = False
+            _recategorize_state["done"] = True
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"status": "started"})
+
+
+@dashboard_bp.route("/rules/recategorize/status", methods=["GET"])
+@login_required
+def rules_recategorize_status():
+    """Poll this endpoint for live job progress."""
+    return jsonify(dict(_recategorize_state))
 
 
 @dashboard_bp.route("/rules/dismiss", methods=["POST"])
