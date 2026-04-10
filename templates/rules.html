@@ -147,7 +147,8 @@
       const data = await res.json();
       if (data.status === 'ok') {
         row.style.opacity = '0.4';
-        btn.textContent = 'Approved ✓';
+        var n = data.rows_updated || 0;
+        btn.textContent = 'Approved ✓' + (n ? ' (' + n + ' rows updated)' : '');
       } else {
         btn.disabled = false;
         btn.textContent = 'Approve';
