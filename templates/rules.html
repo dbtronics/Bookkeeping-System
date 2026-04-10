@@ -63,7 +63,7 @@
   </div>
 
   <div class="table-scroll">
-    <table class="txn-table rules-table">
+    <table class="txn-table rules-table" id="rules-table">
       <thead>
         <tr>
           <th style="width:70px">#</th>
@@ -109,8 +109,11 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='pagination.js') }}"></script>
 <script src="{{ url_for('static', filename='chat.js') }}"></script>
 <script>
+  initPagination('rules-table');
+
   async function approveRule(idx, suggestion) {
     const btn = document.querySelector(`#sug-${idx} .btn-approve`);
     btn.disabled = true;

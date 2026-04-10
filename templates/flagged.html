@@ -21,7 +21,7 @@
 
   {% if flagged %}
   <div class="table-scroll">
-    <table class="txn-table">
+    <table class="txn-table" id="flagged-table">
       <thead>
         <tr>
           <th>Date</th>
@@ -86,8 +86,10 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='pagination.js') }}"></script>
 <script src="{{ url_for('static', filename='chat.js') }}"></script>
 <script>
+  initPagination('flagged-table');
   initChat({
     windowId:      'flaggedChat',
     inputId:       'flaggedInput',

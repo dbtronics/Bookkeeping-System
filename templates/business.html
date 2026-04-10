@@ -92,7 +92,7 @@
     <span class="muted">{{ transactions|length }} rows</span>
   </div>
   <div class="table-scroll">
-    <table class="txn-table">
+    <table class="txn-table" id="biz-table">
       <thead>
         <tr>
           <th>Date</th>
@@ -125,4 +125,9 @@
   </div>
 </div>
 
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='pagination.js') }}"></script>
+<script>initPagination('biz-table');</script>
 {% endblock %}

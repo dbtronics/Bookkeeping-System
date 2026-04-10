@@ -739,6 +739,110 @@ a:hover { text-decoration: underline; }
 .rule-key { color: var(--purple); }
 .rule-val { color: var(--teal); }
 
+/* ---- Pagination ------------------------------------------ */
+.pag-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.pag-search {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  width: 200px;
+  max-width: 100%;
+  transition: border-color 0.15s;
+}
+.pag-search:focus { outline: none; border-color: var(--teal); background: var(--surface); }
+
+.pag-size-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.pag-size-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.pag-size-select {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.pag-size-select:focus { outline: none; border-color: var(--teal); }
+
+.pag-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.pag-info {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: 'DM Mono', monospace;
+}
+
+.pag-pages {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.pag-btn {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  line-height: 1;
+}
+.pag-btn:hover:not(:disabled):not(.active) { background: var(--bg); }
+.pag-btn.active { background: var(--teal); border-color: var(--teal); color: #fff; font-weight: 600; }
+.pag-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.pag-prev, .pag-next { font-size: 16px; }
+
+.pag-ellipsis {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 0 4px;
+  line-height: 32px;
+}
+
+@media (max-width: 768px) {
+  .pag-search { width: 100%; }
+  .pag-bar { gap: 8px; }
+  .pag-btn { min-width: 28px; height: 28px; font-size: 12px; }
+}
+
 /* ---- Empty state ----------------------------------------- */
 .empty { color: var(--muted); text-align: center; padding: 1rem 0; font-size: 14px; }
 
