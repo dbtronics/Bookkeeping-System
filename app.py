@@ -37,7 +37,7 @@ def login():
         if request.form.get("password") == DASHBOARD_PASSWORD:
             session["authenticated"] = True
             logging.info("Login successful")
-            return redirect(url_for("dashboard_overview"))
+            return redirect(url_for("dashboard.dashboard_overview"))
         error = "Incorrect password."
         logging.warning("Failed login attempt")
     return render_template("login.html", error=error)
