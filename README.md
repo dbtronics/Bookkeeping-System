@@ -97,7 +97,12 @@ FLASK_PORT=5000
 
 # Confidence threshold below which Claude-categorized transactions get flagged
 CONFIDENCE_THRESHOLD=0.7
+
+# Set to true to bypass login entirely (useful for local dev/debugging)
+AUTO_LOGIN=false
 ```
+
+All other tuneable values (chat history window, top vendor count, API token limits, rule suggestion threshold, cost estimate) are in `config.py` with comments indicating which file each variable affects.
 
 ### Step 6 — Import your bank transactions
 
@@ -257,7 +262,11 @@ Password-protected at `http://<device-ip>:5000`. All views support `?month=YYYY-
 2. *NL rule editor* — describe a rule in plain English via chat; Claude responds with what it would create.
 3. *Active rules table* — read-only view of all rules in priority order.
 
-**AI chat** — Available on Overview, Flagged, and Rules pages. Model selector (Haiku default / Sonnet) on each chat. Enter to send, conversation history visible in session. Renders markdown (bold, lists, headings). The data summary sent to Claude includes: monthly P&L, category breakdown, top vendors, all excluded-from-P&L transactions, all flagged transactions.
+**AI chat** — Available on Overview, Flagged, and Rules pages. Model selector (Haiku default / Sonnet) on each chat. Enter to send, conversation history maintained within the session (up to 20 turns). Renders markdown (bold, lists, headings).
+
+The data summary sent to Claude includes: monthly P&L, category breakdown, top vendors, all excluded-from-P&L transactions, all flagged transactions.
+
+**Month-aware filtering** — when a month is mentioned in a question ("what's my revenue in January", "last month expenses"), the entire summary is automatically scoped to that month only — totals, categories, and vendor breakdowns all filter accordingly. When no year is stated, the most recent year in the data is assumed and Claude will say so explicitly so you can correct it. Supported formats: month names ("january", "jan"), "this month", "last month", and explicit year ("january 2025").
 
 **Design:** DM Sans + DM Mono fonts, cream / dark background, teal for business, purple for personal. Theme toggle (light/dark) in sidebar + mobile top bar. Mobile-responsive — sidebar collapses to a slide-in drawer on screens ≤ 768px.
 
