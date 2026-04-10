@@ -12,9 +12,10 @@
  */
 
 function initChat(cfg) {
-  var win   = document.getElementById(cfg.windowId);
-  var input = document.getElementById(cfg.inputId);
-  var btn   = document.getElementById(cfg.sendBtnId);
+  var win     = document.getElementById(cfg.windowId);
+  var input   = document.getElementById(cfg.inputId);
+  var btn     = document.getElementById(cfg.sendBtnId);
+  var history = [];  // [{role:'user'|'assistant', content:'...'}]
 
   function modelVal() {
     var el = cfg.modelSelectId && document.getElementById(cfg.modelSelectId);
@@ -151,6 +152,8 @@ function initChat(cfg) {
     appendUserMsg(q);
     appendThinking();
 
+    history.push({ role: 'user', content: q });
+
     try {
       var res = await fetch('/query', {
         method: 'POST',
@@ -159,20 +162,25 @@ function initChat(cfg) {
           question: q,
           model: modelVal(),
           scope: scopeVal(),
+          history: history.slice(0, -1),  // exclude current message — backend appends it
         }),
       });
       var data = await res.json();
       removeThinking();
 
       if (data.error) {
+        history.pop();  // remove failed message from history
         appendErrorMsg('Error: ' + data.error);
       } else {
+        var answer = data.answer || 'No answer returned.';
+        history.push({ role: 'assistant', content: answer });
         var modelLabel = (data.model || '').includes('haiku') ? 'Haiku' : 'Sonnet';
         var scopeLabel = data.scope || '';
         var meta = modelLabel + (scopeLabel ? ' · ' + scopeLabel : '');
-        appendAiMsg(data.answer || 'No answer returned.', meta);
+        appendAiMsg(answer, meta);
       }
     } catch (e) {
+      history.pop();  // remove failed message from history
       removeThinking();
       appendErrorMsg('Network error: ' + e.message);
     }

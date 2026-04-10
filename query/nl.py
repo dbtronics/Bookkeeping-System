@@ -172,28 +172,52 @@ FLAGGED TRANSACTIONS (low confidence or need review):
 # Claude call
 # ---------------------------------------------------------------------------
 
-def _ask_claude(question, summary, model_id):
-    """Send question + data summary to Claude. Returns answer string."""
+def _ask_claude(question, summary, model_id, history=None):
+    """Send question + data summary to Claude. Returns answer string.
+
+    history: list of {role, content} dicts from prior turns in this session.
+    The data summary is injected only into the first user message so it's not
+    repeated on every follow-up (saves tokens, avoids confusion).
+    """
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
     system = (
         "You are a bookkeeping assistant for a small household and business. "
         "You are given a summary of financial transactions and must answer the user's question "
         "in plain English. Be concise and specific. Use dollar amounts where relevant. "
-        "If the answer is not in the data, say so clearly. Do not make up numbers."
+        "If the answer is not in the data, say so clearly. Do not make up numbers. "
+        "The data summary is provided in the first message of this conversation — use it "
+        "to answer all follow-up questions."
     )
 
-    user_msg = f"""Here is the financial data summary:
+    messages = []
 
-{summary}
-
-Question: {question}"""
+    if history:
+        # First message in history already contains the data summary (injected below).
+        # Subsequent history turns are plain question/answer pairs.
+        for i, turn in enumerate(history):
+            if turn["role"] == "user" and i == 0:
+                # Prepend the summary to the very first user message
+                messages.append({
+                    "role": "user",
+                    "content": f"Here is the financial data summary:\n\n{summary}\n\nQuestion: {turn['content']}"
+                })
+            else:
+                messages.append({"role": turn["role"], "content": turn["content"]})
+        # Now append the current question
+        messages.append({"role": "user", "content": question})
+    else:
+        # No history — first message, include the summary
+        messages.append({
+            "role": "user",
+            "content": f"Here is the financial data summary:\n\n{summary}\n\nQuestion: {question}"
+        })
 
     response = client.messages.create(
         model=model_id,
         max_tokens=1024,
         system=system,
-        messages=[{"role": "user", "content": user_msg}],
+        messages=messages,
     )
 
     return response.content[0].text.strip()
@@ -224,12 +248,23 @@ def nl_query():
     # For rules scope, treat as all-data query
     effective_scope = "all" if scope == "rules" else scope
 
-    log.info("NL query | model=%s scope=%s | %s", model_id, scope, question[:80])
+    # Conversation history — list of {role, content} from prior turns
+    history = data.get("history", [])
+    if not isinstance(history, list):
+        history = []
+    # Sanitize: only allow known roles, string content, cap at 20 turns
+    history = [
+        {"role": h["role"], "content": str(h["content"])}
+        for h in history
+        if isinstance(h, dict) and h.get("role") in ("user", "assistant") and h.get("content")
+    ][-20:]
+
+    log.info("NL query | model=%s scope=%s history=%d | %s", model_id, scope, len(history), question[:80])
 
     try:
         t0 = time.time()
         summary = _build_summary(effective_scope)
-        answer = _ask_claude(question, summary, model_id)
+        answer = _ask_claude(question, summary, model_id, history=history)
         elapsed = time.time() - t0
         log.info("NL query answered in %.1fs | model=%s scope=%s", elapsed, model_id, scope)
         return jsonify({"answer": answer, "model": model_id, "scope": scope})
