@@ -498,6 +498,64 @@ run("All expected blueprints registered",          _flask_blueprints_registered)
 
 
 # ---------------------------------------------------------------------------
+# SECTION: Dashboard route rendering
+# Each authenticated route must render without a 500 error.
+# This catches template/data shape mismatches before they hit users.
+# ---------------------------------------------------------------------------
+
+section("DASHBOARD ROUTES")
+
+from app import app as flask_app
+
+def _authenticated_client():
+    """Return a test client with an active session."""
+    client = flask_app.test_client()
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+    return client
+
+def _route_renders(path, label=None):
+    def _():
+        client = _authenticated_client()
+        resp = client.get(path)
+        assert resp.status_code == 200, \
+            f"{path} returned {resp.status_code} — expected 200"
+        assert len(resp.data) > 100, \
+            f"{path} returned an unexpectedly short response ({len(resp.data)} bytes)"
+    return _
+
+def _suggested_rules_shape():
+    """Suggested rules must have description, match (dict), apply (dict) — what the template expects."""
+    from dashboard.routes import _load_suggested_rules
+    suggestions = _load_suggested_rules()
+    for i, s in enumerate(suggestions):
+        assert "description" in s, \
+            f"Suggestion {i} missing 'description' key — template will crash"
+        assert isinstance(s.get("match"), dict), \
+            f"Suggestion {i} 'match' must be a dict for tojson filter, got {type(s.get('match'))}"
+        assert isinstance(s.get("apply"), dict), \
+            f"Suggestion {i} 'apply' must be a dict for tojson filter, got {type(s.get('apply'))}"
+
+def _active_rules_shape():
+    """Active rules must have id, description, match (dict), apply (dict)."""
+    from dashboard.routes import _load_rules
+    rules = _load_rules()
+    for i, r in enumerate(rules):
+        for key in ("id", "description", "match", "apply"):
+            assert key in r, f"Rule {i} missing '{key}' key"
+        assert isinstance(r["match"], dict), f"Rule {i} 'match' must be a dict"
+        assert isinstance(r["apply"], dict), f"Rule {i} 'apply' must be a dict"
+
+run("GET /dashboard renders (200)",  _route_renders("/dashboard"))
+run("GET /business renders (200)",   _route_renders("/business"))
+run("GET /personal renders (200)",   _route_renders("/personal"))
+run("GET /flagged renders (200)",    _route_renders("/flagged"))
+run("GET /rules renders (200)",      _route_renders("/rules"))
+run("Suggested rules have correct shape for template", _suggested_rules_shape)
+run("Active rules have correct shape for template",    _active_rules_shape)
+
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 

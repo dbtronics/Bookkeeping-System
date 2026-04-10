@@ -49,7 +49,29 @@ def _load_suggested_rules():
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-        return data.get("suggestions", [])
+        raw = data.get("suggestions", [])
+        # Transform flat suggestion dicts into the match/apply shape the
+        # template and approve endpoint both expect
+        result = []
+        for s in raw:
+            vendor   = s.get("vendor_name", "")
+            account  = s.get("account_type", "")
+            category = s.get("category", "")
+            subcat   = s.get("subcategory", "")
+            result.append({
+                "description": f"{vendor} → {category}" + (f" / {subcat}" if subcat else ""),
+                "match": {
+                    "vendor_name_contains": vendor,
+                    **({"account_type": account} if account else {}),
+                },
+                "apply": {
+                    "category":   category,
+                    **({"subcategory": subcat} if subcat else {}),
+                },
+                "seen_count":   s.get("seen_count", 0),
+                "example_desc": s.get("example_desc", ""),
+            })
+        return result
     except Exception as e:
         log.error("Failed to load rules_suggested.json: %s", e)
         return []
