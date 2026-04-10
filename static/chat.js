@@ -144,8 +144,8 @@ function initChat(cfg) {
     var metaHtml = '';
     if (meta || cost) {
       metaHtml = '<div class="chat-meta">';
-      if (meta) metaHtml += '<span>' + meta + '</span>';
       if (cost) metaHtml += '<span class="chat-cost">' + cost + '</span>';
+      if (meta) metaHtml += '<span>' + meta + '</span>';
       metaHtml += '</div>';
     }
     div.innerHTML =
