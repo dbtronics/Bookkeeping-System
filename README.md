@@ -279,23 +279,21 @@ The data summary sent to Claude includes: monthly P&L, category breakdown, top v
 | `/health` | GET | No | Health check |
 | `/login` | GET/POST | No | Dashboard login |
 | `/logout` | GET | No | Clear session |
-| `/` or `/dashboard` | GET | Yes | Overview — KPIs, trend chart, AI chat |
+| `/` or `/dashboard` | GET | Yes | Overview — KPIs, trend chart, AI chat, Recategorize button |
 | `/business` | GET | Yes | Business P&L, transaction table |
 | `/personal` | GET | Yes | Personal P&L, transaction table |
 | `/flagged` | GET | Yes | Flagged transactions + AI chat |
-| `/rules` | GET | Yes | Rules management + AI chat |
-| `/rules/approve` | POST | Yes | Approve a suggested rule |
-| `/rules/dismiss` | POST | Yes | Dismiss a suggested rule |
-| `/query` | POST | Yes | NL query — accepts `question`, `model`, `scope` |
-| `/query/models` | GET | Yes | Returns available models + default |
-| `/ingest/receipt` | POST | No | n8n webhook — receipt ingestion |
-| `/ingest/transaction` | POST | No | n8n webhook — bank CSV ingestion |
+| `/rules` | GET | Yes | Active rules, suggested rules, NL rule creation chat |
 | `/rules/propose` | POST | Yes | Parse plain-English rule description via Claude, return rule JSON preview |
 | `/rules/save` | POST | Yes | Write a confirmed proposed rule to rules.json and apply to master CSV |
 | `/rules/approve` | POST | Yes | Approve a suggested rule (from AI batch suggestions) |
 | `/rules/dismiss` | POST | Yes | Dismiss a suggested rule |
 | `/rules/recategorize` | POST | Yes | Start background recategorize job (rules + Claude Haiku) |
 | `/rules/recategorize/status` | GET | Yes | Poll live progress of recategorize job |
+| `/query` | POST | Yes | NL query — accepts `question`, `model`, `scope` |
+| `/query/models` | GET | Yes | Returns available models + default |
+| `/ingest/receipt` | POST | No | n8n webhook — receipt ingestion |
+| `/ingest/transaction` | POST | No | n8n webhook — bank CSV ingestion |
 
 ---
 
