@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Rules — Bookkeeping{% endblock %}
+{% block mobile_title %}Rules{% endblock %}
+{% block page_title %}Rules &amp; Exceptions{% endblock %}
+
+{% block content %}
+
+<!-- Suggested rules (approve / dismiss) -->
+{% if suggested %}
+<div class="card suggested-section">
+  <div class="card-header">
+    <h2>Suggested rules</h2>
+    <span class="badge">{{ suggested|length }}</span>
+  </div>
+  <p class="muted" style="margin-bottom: 1rem;">Claude identified these patterns. One-click to approve or dismiss.</p>
+  <div class="suggestion-list">
+    {% for s in suggested %}
+    <div class="suggestion-row" id="sug-{{ loop.index }}">
+      <div class="sug-body">
+        <div class="sug-desc">{{ s.description }}</div>
+        <div class="sug-detail muted">
+          Match: <span class="mono">{{ s.match | tojson }}</span> →
+          Apply: <span class="mono">{{ s.apply | tojson }}</span>
+        </div>
+      </div>
+      <div class="sug-actions">
+        <button class="btn btn-sm btn-approve" onclick="approveRule({{ loop.index }}, {{ s | tojson }})">Approve</button>
+        <button class="btn btn-sm btn-dismiss" onclick="dismissRule({{ loop.index }}, {{ s | tojson }})">Dismiss</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Natural language rule creation -->
+<div class="card">
+  <div class="card-header">
+    <h2>Add or change a rule</h2>
+    <span class="badge-pill">AI</span>
+  </div>
+  <p class="muted" style="margin-bottom: 1rem;">Describe the rule you want in plain English. Claude will generate the JSON and ask for confirmation before writing.</p>
+  <div class="nl-query-area">
+    <input type="text" id="ruleInput" class="nl-input" placeholder="e.g. Always categorize GoHighLevel as SaaS tools for business">
+    <button class="btn btn-primary" onclick="proposeRule()">Propose</button>
+  </div>
+  <div id="ruleAnswer" class="nl-answer" style="display:none"></div>
+</div>
+
+<!-- Active rules table -->
+<div class="card">
+  <div class="card-header">
+    <h2>Active rules</h2>
+    <span class="muted">{{ rules|length }} rules — applied in order, first match wins</span>
+  </div>
+
+  <div class="table-scroll">
+    <table class="txn-table rules-table">
+      <thead>
+        <tr>
+          <th style="width:70px">#</th>
+          <th>Description</th>
+          <th>Match</th>
+          <th>Apply</th>
+          <th>P&amp;L</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rule in rules %}
+        <tr>
+          <td class="mono muted">{{ rule.id }}</td>
+          <td>{{ rule.description }}</td>
+          <td class="mono rule-match">
+            {% for k, v in rule.match.items() %}
+            <div><span class="rule-key">{{ k }}</span>: <span class="rule-val">{{ v }}</span></div>
+            {% endfor %}
+          </td>
+          <td class="mono rule-apply">
+            {% for k, v in rule.apply.items() %}
+            {% if k != 'exclude_from_pnl' %}
+            <div><span class="rule-key">{{ k }}</span>: <span class="rule-val">{{ v }}</span></div>
+            {% endif %}
+            {% endfor %}
+          </td>
+          <td>
+            {% if rule.apply.get('exclude_from_pnl') %}
+            <span class="pill grey">excluded</span>
+            {% else %}
+            <span class="pill teal">included</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="empty">No rules yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function approveRule(idx, suggestion) {
+    const btn = document.querySelector(`#sug-${idx} .btn-approve`);
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    try {
+      const res = await fetch('/rules/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(suggestion)
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        document.getElementById(`sug-${idx}`).style.opacity = '0.4';
+        btn.textContent = 'Approved ✓';
+      } else {
+        btn.textContent = 'Error';
+        alert(data.error || 'Failed to approve rule.');
+      }
+    } catch(e) {
+      btn.textContent = 'Error';
+      alert(e.message);
+    }
+  }
+
+  async function dismissRule(idx, suggestion) {
+    const row = document.getElementById(`sug-${idx}`);
+    try {
+      await fetch('/rules/dismiss', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(suggestion)
+      });
+      row.style.display = 'none';
+    } catch(e) {
+      alert(e.message);
+    }
+  }
+
+  async function proposeRule() {
+    const q = document.getElementById('ruleInput').value.trim();
+    if (!q) return;
+    const btn = document.querySelector('.nl-query-area .btn');
+    btn.disabled = true;
+    btn.textContent = 'Thinking…';
+    try {
+      const res = await fetch('/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q, scope: 'rules' })
+      });
+      const data = await res.json();
+      const box = document.getElementById('ruleAnswer');
+      box.style.display = 'block';
+      box.textContent = data.answer || data.error || 'No response.';
+    } catch(e) {
+      document.getElementById('ruleAnswer').style.display = 'block';
+      document.getElementById('ruleAnswer').textContent = 'Error: ' + e.message;
+    }
+    btn.disabled = false;
+    btn.textContent = 'Propose';
+  }
+</script>
+{% endblock %}

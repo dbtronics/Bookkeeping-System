@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Overview — Bookkeeping{% endblock %}
+{% block mobile_title %}Overview{% endblock %}
+{% block page_title %}Overview{% endblock %}
+
+{% block content %}
+
+<!-- KPI row -->
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Total In</div>
+    <div class="kpi-value positive">${{ "{:,.2f}".format(total_in) }}</div>
+    <div class="kpi-sub">Revenue + Income</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Total Out</div>
+    <div class="kpi-value negative">−${{ "{:,.2f}".format(total_out) }}</div>
+    <div class="kpi-sub">All expenses</div>
+  </div>
+  <div class="kpi-card kpi-net">
+    <div class="kpi-label">Net</div>
+    <div class="kpi-value {% if net >= 0 %}positive{% else %}negative{% endif %}">
+      {% if net >= 0 %}+{% else %}−{% endif %}${{ "{:,.2f}".format(net|abs) }}
+    </div>
+    <div class="kpi-sub">{{ selected_month if selected_month != 'all' else 'All time' }}</div>
+  </div>
+  {% if flagged_count > 0 %}
+  <div class="kpi-card kpi-flag">
+    <div class="kpi-label">Flagged</div>
+    <div class="kpi-value warn">{{ flagged_count }}</div>
+    <div class="kpi-sub"><a href="{{ url_for('dashboard.dashboard_flagged') }}">Review now →</a></div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Business + Personal snapshots -->
+<div class="snapshot-grid">
+  <div class="card snapshot-card teal-border">
+    <div class="card-header">
+      <span class="dot teal"></span>
+      <h2>Business</h2>
+      <a href="{{ url_for('dashboard.dashboard_business', month=selected_month if selected_month != 'all' else '') }}" class="card-link">Details →</a>
+    </div>
+    <div class="snapshot-row">
+      <span class="snapshot-label">Revenue</span>
+      <span class="snapshot-value positive">${{ "{:,.2f}".format(biz_revenue) }}</span>
+    </div>
+    <div class="snapshot-row">
+      <span class="snapshot-label">Expenses</span>
+      <span class="snapshot-value negative">−${{ "{:,.2f}".format(biz_expenses) }}</span>
+    </div>
+    <div class="snapshot-row snapshot-net">
+      <span class="snapshot-label">Net</span>
+      <span class="snapshot-value {% if biz_net >= 0 %}positive{% else %}negative{% endif %}">
+        {% if biz_net >= 0 %}+{% else %}−{% endif %}${{ "{:,.2f}".format(biz_net|abs) }}
+      </span>
+    </div>
+  </div>
+
+  <div class="card snapshot-card purple-border">
+    <div class="card-header">
+      <span class="dot purple"></span>
+      <h2>Personal</h2>
+      <a href="{{ url_for('dashboard.dashboard_personal', month=selected_month if selected_month != 'all' else '') }}" class="card-link">Details →</a>
+    </div>
+    <div class="snapshot-row">
+      <span class="snapshot-label">Income</span>
+      <span class="snapshot-value positive">${{ "{:,.2f}".format(per_income) }}</span>
+    </div>
+    <div class="snapshot-row">
+      <span class="snapshot-label">Expenses</span>
+      <span class="snapshot-value negative">−${{ "{:,.2f}".format(per_expenses) }}</span>
+    </div>
+    <div class="snapshot-row snapshot-net">
+      <span class="snapshot-label">Net</span>
+      <span class="snapshot-value {% if per_net >= 0 %}positive{% else %}negative{% endif %}">
+        {% if per_net >= 0 %}+{% else %}−{% endif %}${{ "{:,.2f}".format(per_net|abs) }}
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- Trend chart -->
+{% if trend %}
+<div class="card">
+  <div class="card-header">
+    <h2>Monthly trend</h2>
+  </div>
+  <div class="chart-container">
+    <canvas id="trendChart"></canvas>
+  </div>
+</div>
+{% endif %}
+
+<!-- NL Query stub -->
+<div class="card">
+  <div class="card-header">
+    <h2>Ask a question</h2>
+    <span class="badge-pill">AI</span>
+  </div>
+  <div class="nl-query-area">
+    <input type="text" id="nlInput" class="nl-input" placeholder="e.g. What did I spend on SaaS last month?">
+    <button class="btn btn-primary" onclick="sendQuery()">Ask</button>
+  </div>
+  <div id="nlAnswer" class="nl-answer" style="display:none"></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+  {% if trend %}
+  const trendData = {{ trend | tojson }};
+  const labels = trendData.map(d => d.month);
+  const bizData = trendData.map(d => d.biz_net);
+  const perData = trendData.map(d => d.per_net);
+
+  const ctx = document.getElementById('trendChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Business net',
+          data: bizData,
+          backgroundColor: bizData.map(v => v >= 0 ? 'rgba(29,158,117,0.7)' : 'rgba(229,115,115,0.7)'),
+          borderRadius: 4,
+        },
+        {
+          label: 'Personal net',
+          data: perData,
+          backgroundColor: perData.map(v => v >= 0 ? 'rgba(127,119,221,0.7)' : 'rgba(229,115,115,0.5)'),
+          borderRadius: 4,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#6b7280', font: { family: 'DM Sans' } } } },
+      scales: {
+        x: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color: '#6b7280' } },
+        y: {
+          grid: { color: 'rgba(0,0,0,0.05)' },
+          ticks: {
+            color: '#6b7280',
+            callback: v => '$' + v.toLocaleString()
+          }
+        }
+      }
+    }
+  });
+  {% endif %}
+
+  async function sendQuery() {
+    const q = document.getElementById('nlInput').value.trim();
+    if (!q) return;
+    const btn = document.querySelector('.nl-query-area .btn');
+    btn.disabled = true;
+    btn.textContent = 'Thinking…';
+    try {
+      const res = await fetch('/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q, scope: 'all' })
+      });
+      const data = await res.json();
+      const box = document.getElementById('nlAnswer');
+      box.style.display = 'block';
+      box.textContent = data.answer || data.error || 'No answer returned.';
+    } catch(e) {
+      document.getElementById('nlAnswer').style.display = 'block';
+      document.getElementById('nlAnswer').textContent = 'Error: ' + e.message;
+    }
+    btn.disabled = false;
+    btn.textContent = 'Ask';
+  }
+
+  document.getElementById('nlInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') sendQuery();
+  });
+</script>
+{% endblock %}

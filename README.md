@@ -141,6 +141,27 @@ Disable this script once n8n is live and calling `/ingest/transaction` directly.
 
 ---
 
+## Dashboard
+
+The dashboard is a password-protected web app served at `http://<device-ip>:5000`. All views support a `?month=YYYY-MM` filter via a dropdown in the top bar.
+
+**Overview** — Combined KPIs (total in, total out, net), business and personal snapshots side by side, monthly trend bar chart (Chart.js), and a natural language query input powered by Claude Sonnet.
+
+**Business** — Revenue sources and expense breakdown by category as horizontal bar charts, top vendors by spend, full transaction table with categorization source (rule / AI / manual) and flagged indicators.
+
+**Personal** — Same layout as Business but for personal accounts — income sources, expense categories, vendor breakdown, transaction table.
+
+**Flagged** — All transactions Claude categorized with confidence below 0.7, or that were flagged for other reasons. Shows confidence score colour-coded (red / amber / green) and flag reason. Includes an NL input to describe corrections.
+
+**Rules** — Three sections:
+1. *Suggested rules* — patterns Claude identified during the last batch run (vendors it categorized the same way 2+ times). One-click approve (writes to `rules.json`) or dismiss.
+2. *NL rule editor* — describe a rule in plain English; Claude generates the JSON and proposes it for confirmation.
+3. *Active rules table* — full read-only view of all rules in priority order, showing match conditions, applied fields, and P&L inclusion status.
+
+**Design:** DM Sans + DM Mono fonts, cream background (`#f7f6f3`), teal (`#1d9e75`) for business, purple (`#7f77dd`) for personal. Fully mobile-responsive — sidebar collapses to a slide-in drawer with a hamburger menu on screens ≤ 768px.
+
+---
+
 ## Routes
 
 | Route | Method | Auth | Description |
@@ -148,29 +169,34 @@ Disable this script once n8n is live and calling `/ingest/transaction` directly.
 | `/health` | GET | No | Health check — returns `{"status": "ok"}` |
 | `/login` | GET/POST | No | Dashboard login |
 | `/logout` | GET | No | Clear session |
-| `/` or `/dashboard` | GET | Yes | Overview P&L |
-| `/business` | GET | Yes | Business transactions |
-| `/personal` | GET | Yes | Personal transactions |
-| `/receipts` | GET | Yes | Filed receipts |
-| `/query` | POST | Yes | Natural language query |
+| `/` or `/dashboard` | GET | Yes | Overview — combined P&L, trend chart, NL query |
+| `/business` | GET | Yes | Business revenue, expenses by category, transaction table |
+| `/personal` | GET | Yes | Personal income, expenses by category, transaction table |
+| `/flagged` | GET | Yes | All flagged transactions needing review |
+| `/rules` | GET | Yes | Active rules table + suggested rules + NL rule editor |
+| `/rules/approve` | POST | Yes | Approve a suggested rule (adds to rules.json) |
+| `/rules/dismiss` | POST | Yes | Dismiss a suggested rule |
+| `/query` | POST | Yes | Natural language query (Claude Sonnet) |
 | `/ingest/receipt` | POST | No | n8n webhook — receipt |
 | `/ingest/transaction` | POST | No | n8n webhook — bank CSV |
-| `/rules/propose` | POST | Yes | Propose a new rule |
+| `/rules/propose` | POST | Yes | Propose a new rule via Telegram |
 | `/rules/confirm` | POST | No | Telegram webhook — confirm rule |
+
+All dashboard routes accept an optional `?month=YYYY-MM` query parameter to filter by month.
 
 ---
 
 ## Build phases
 
 - [x] Phase 1 — Project scaffold, config, login, /health
-- [ ] Phase 2 — CSV utilities (safe read/append, dedup, create-if-missing)
-- [ ] Phase 3 — Rules engine (load rules.json, match, archive before write)
-- [ ] Phase 4 — Claude Haiku categorizer
-- [ ] Phase 5 — /ingest/transaction endpoint
-- [ ] Phase 6 — /ingest/receipt endpoint
-- [ ] Phase 7 — watcher.py (cron fallback for bank-transactions/raw/)
-- [ ] Phase 8 — Dashboard aggregator (P&L totals from CSV)
-- [ ] Phase 9 — Dashboard routes and HTML templates
+- [x] Phase 2 — CSV utilities (safe read/append, dedup, create-if-missing)
+- [x] Phase 3 — Rules engine (load rules.json, match, archive before write)
+- [x] Phase 4 — Claude Haiku categorizer
+- [x] Phase 5 — /ingest/transaction endpoint
+- [x] Phase 6 — /ingest/receipt endpoint
+- [x] Phase 7 — raw_processor.py (cron fallback for bank-transactions/raw/)
+- [x] Phase 8 — Dashboard aggregator (P&L totals from CSV by month/category/account)
+- [x] Phase 9 — Dashboard UI (overview, business, personal, flagged, rules — mobile-responsive)
 - [ ] Phase 10 — NL query (/query endpoint, Claude Sonnet)
 - [ ] Phase 11 — Rule proposal flow (/rules/propose, /rules/confirm, Telegram)
 - [ ] Phase 12 — Automated reports (weekly/monthly Telegram summary)

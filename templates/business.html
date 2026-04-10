@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Business — Bookkeeping{% endblock %}
+{% block mobile_title %}Business{% endblock %}
+{% block page_title %}Business{% endblock %}
+
+{% block content %}
+
+<!-- KPIs -->
+<div class="kpi-grid">
+  <div class="kpi-card teal-border">
+    <div class="kpi-label">Revenue</div>
+    <div class="kpi-value positive">${{ "{:,.2f}".format(revenue) }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Expenses</div>
+    <div class="kpi-value negative">−${{ "{:,.2f}".format(expenses) }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Net</div>
+    <div class="kpi-value {% if net >= 0 %}positive{% else %}negative{% endif %}">
+      {% if net >= 0 %}+{% else %}−{% endif %}${{ "{:,.2f}".format(net|abs) }}
+    </div>
+  </div>
+</div>
+
+<!-- Revenue sources + Expense breakdown -->
+<div class="two-col-grid">
+  <div class="card">
+    <div class="card-header"><h2>Revenue sources</h2></div>
+    {% if revenue_by_vendor %}
+    <div class="bar-list">
+      {% set max_rev = revenue_by_vendor[0][1] if revenue_by_vendor else 1 %}
+      {% for vendor, amt in revenue_by_vendor %}
+      <div class="bar-item">
+        <div class="bar-label">{{ vendor }}</div>
+        <div class="bar-track">
+          <div class="bar-fill teal" style="width: {{ [(amt / max_rev * 100)|round|int, 100]|min }}%"></div>
+        </div>
+        <div class="bar-value">${{ "{:,.2f}".format(amt) }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty">No revenue in this period.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>Expenses by category</h2></div>
+    {% if expenses_by_category %}
+    <div class="bar-list">
+      {% set max_exp = expenses_by_category[0][1] if expenses_by_category else 1 %}
+      {% for cat, amt in expenses_by_category %}
+      <div class="bar-item">
+        <div class="bar-label">{{ cat }}</div>
+        <div class="bar-track">
+          <div class="bar-fill red" style="width: {{ [(amt / max_exp * 100)|round|int, 100]|min }}%"></div>
+        </div>
+        <div class="bar-value">${{ "{:,.2f}".format(amt) }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty">No expenses in this period.</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Top vendors -->
+{% if expenses_by_vendor %}
+<div class="card">
+  <div class="card-header"><h2>Top vendors by spend</h2></div>
+  <div class="bar-list">
+    {% set max_v = expenses_by_vendor[0][1] if expenses_by_vendor else 1 %}
+    {% for vendor, amt in expenses_by_vendor %}
+    <div class="bar-item">
+      <div class="bar-label">{{ vendor }}</div>
+      <div class="bar-track">
+        <div class="bar-fill red" style="width: {{ [(amt / max_v * 100)|round|int, 100]|min }}%"></div>
+      </div>
+      <div class="bar-value">${{ "{:,.2f}".format(amt) }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Transaction table -->
+<div class="card">
+  <div class="card-header">
+    <h2>Transactions</h2>
+    <span class="muted">{{ transactions|length }} rows</span>
+  </div>
+  <div class="table-scroll">
+    <table class="txn-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Description</th>
+          <th>Category</th>
+          <th>By</th>
+          <th class="num">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in transactions %}
+        <tr class="{% if t.flagged == 'True' %}row-flagged{% endif %} {% if t.exclude_from_pnl == 'True' %}row-excluded{% endif %}">
+          <td class="mono">{{ t.date }}</td>
+          <td class="desc-cell">
+            <span class="vendor">{{ t.vendor_name or t.description }}</span>
+            {% if t.exclude_from_pnl == 'True' %}<span class="pill grey">excl.</span>{% endif %}
+            {% if t.flagged == 'True' %}<span class="pill orange">flagged</span>{% endif %}
+          </td>
+          <td>{{ t.category }}{% if t.subcategory %}<span class="muted"> / {{ t.subcategory }}</span>{% endif %}</td>
+          <td><span class="pill {% if t.categorized_by == 'rule' %}blue{% elif t.categorized_by == 'ai' %}teal{% else %}grey{% endif %}">{{ t.categorized_by }}</span></td>
+          <td class="num mono {% if t.amount|float >= 0 %}positive{% else %}negative{% endif %}">
+            {% if t.amount|float >= 0 %}+{% endif %}${{ "{:,.2f}".format(t.amount|float|abs) }}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="empty">No transactions.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

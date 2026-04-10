@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Flagged — Bookkeeping{% endblock %}
+{% block mobile_title %}Flagged{% endblock %}
+{% block page_title %}Flagged transactions{% endblock %}
+
+{% block content %}
+
+<div class="kpi-grid">
+  <div class="kpi-card kpi-flag">
+    <div class="kpi-label">Flagged</div>
+    <div class="kpi-value warn">{{ count }}</div>
+    <div class="kpi-sub">Need review</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>Transactions needing review</h2>
+    <span class="muted">{{ count }} items</span>
+  </div>
+
+  {% if flagged %}
+  <div class="table-scroll">
+    <table class="txn-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Description</th>
+          <th>Category</th>
+          <th>Confidence</th>
+          <th>Reason</th>
+          <th class="num">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in flagged %}
+        <tr class="row-flagged">
+          <td class="mono">{{ t.date }}</td>
+          <td class="desc-cell">
+            <span class="vendor">{{ t.vendor_name or t.description }}</span>
+            <div class="desc-raw muted">{{ t.description }}</div>
+          </td>
+          <td>{{ t.category }}{% if t.subcategory %}<span class="muted"> / {{ t.subcategory }}</span>{% endif %}</td>
+          <td class="mono">
+            {% if t.confidence %}
+              <span class="conf conf-{{ 'low' if t.confidence|float < 0.5 else 'mid' if t.confidence|float < 0.7 else 'high' }}">
+                {{ "{:.0%}".format(t.confidence|float) }}
+              </span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="muted">{{ t.flag_reason or '—' }}</td>
+          <td class="num mono {% if t.amount|float >= 0 %}positive{% else %}negative{% endif %}">
+            {% if t.amount|float >= 0 %}+{% endif %}${{ "{:,.2f}".format(t.amount|float|abs) }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty" style="padding: 2rem;">No flagged transactions. All clear.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>Fix with natural language</h2>
+    <span class="badge-pill">AI</span>
+  </div>
+  <p class="muted" style="margin-bottom: 1rem;">Describe a correction and Claude will propose a rule. Example: "ROYAL PAAN is a restaurant, categorize as Living expenses."</p>
+  <div class="nl-query-area">
+    <input type="text" id="fixInput" class="nl-input" placeholder="Describe a correction…">
+    <button class="btn btn-primary" onclick="sendFix()">Apply</button>
+  </div>
+  <div id="fixAnswer" class="nl-answer" style="display:none"></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function sendFix() {
+    const q = document.getElementById('fixInput').value.trim();
+    if (!q) return;
+    const btn = document.querySelector('.nl-query-area .btn');
+    btn.disabled = true;
+    btn.textContent = 'Thinking…';
+    try {
+      const res = await fetch('/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q, scope: 'all' })
+      });
+      const data = await res.json();
+      const box = document.getElementById('fixAnswer');
+      box.style.display = 'block';
+      box.textContent = data.answer || data.error || 'No response.';
+    } catch(e) {
+      document.getElementById('fixAnswer').style.display = 'block';
+      document.getElementById('fixAnswer').textContent = 'Error: ' + e.message;
+    }
+    btn.disabled = false;
+    btn.textContent = 'Apply';
+  }
+</script>
+{% endblock %}

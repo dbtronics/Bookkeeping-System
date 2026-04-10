@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Bookkeeping{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+  <!-- Mobile hamburger toggle -->
+  <input type="checkbox" id="nav-toggle" class="nav-toggle-input">
+
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-logo">BK</span>
+      <span class="sidebar-title">Bookkeeping</span>
+      <label for="nav-toggle" class="nav-close">✕</label>
+    </div>
+
+    <ul class="nav-links">
+      <li><a href="{{ url_for('dashboard.dashboard_overview') }}" class="nav-link {% if request.endpoint == 'dashboard.dashboard_overview' %}active{% endif %}">
+        <span class="nav-icon">◈</span> Overview
+      </a></li>
+      <li><a href="{{ url_for('dashboard.dashboard_business') }}" class="nav-link {% if request.endpoint == 'dashboard.dashboard_business' %}active{% endif %}">
+        <span class="nav-icon teal">▸</span> Business
+      </a></li>
+      <li><a href="{{ url_for('dashboard.dashboard_personal') }}" class="nav-link {% if request.endpoint == 'dashboard.dashboard_personal' %}active{% endif %}">
+        <span class="nav-icon purple">▸</span> Personal
+      </a></li>
+      <li><a href="{{ url_for('dashboard.dashboard_flagged') }}" class="nav-link {% if request.endpoint == 'dashboard.dashboard_flagged' %}active{% endif %}">
+        <span class="nav-icon red">⚑</span> Flagged
+        {% if flagged_count is defined and flagged_count > 0 %}
+          <span class="badge">{{ flagged_count }}</span>
+        {% endif %}
+      </a></li>
+      <li><a href="{{ url_for('dashboard.dashboard_rules') }}" class="nav-link {% if request.endpoint == 'dashboard.dashboard_rules' %}active{% endif %}">
+        <span class="nav-icon">⚙</span> Rules
+      </a></li>
+    </ul>
+
+    <div class="sidebar-footer">
+      <a href="{{ url_for('logout') }}" class="nav-link logout">Sign out</a>
+    </div>
+  </nav>
+
+  <!-- Mobile top bar -->
+  <div class="mobile-topbar">
+    <label for="nav-toggle" class="hamburger">
+      <span></span><span></span><span></span>
+    </label>
+    <span class="mobile-title">{% block mobile_title %}Bookkeeping{% endblock %}</span>
+    {% if months is defined %}
+    <select class="month-select-mobile" onchange="applyMonth(this.value)">
+      <option value="">All months</option>
+      {% for m in months %}
+        <option value="{{ m }}" {% if selected_month == m %}selected{% endif %}>{{ m }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+  </div>
+
+  <!-- Overlay for mobile nav -->
+  <label for="nav-toggle" class="nav-overlay"></label>
+
+  <main class="main-content">
+    <div class="page-header">
+      <h1>{% block page_title %}{% endblock %}</h1>
+      <div class="page-header-right">
+        {% if months is defined %}
+        <select class="month-select" onchange="applyMonth(this.value)">
+          <option value="">All months</option>
+          {% for m in months %}
+            <option value="{{ m }}" {% if selected_month == m %}selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+        {% endif %}
+      </div>
+    </div>
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <script>
+    function applyMonth(val) {
+      const url = new URL(window.location);
+      if (val) url.searchParams.set('month', val);
+      else url.searchParams.delete('month');
+      window.location = url.toString();
+    }
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
