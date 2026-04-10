@@ -4,11 +4,19 @@ raw_processor.py — Temporary standalone script
 Reads raw bank CSVs → splits by month → writes to organized folder structure
 → appends new rows to master_transactions.csv with dedup.
 Disable this once n8n + /ingest/transaction endpoint is live.
+
+Uses csv_utils.py for all CSV operations so the logic stays consistent
+with the rest of the app.
 """
 import os, csv, logging
 from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
+
+from csv_utils import (
+    TRANSACTION_HEADERS, ensure_csv, append_row,
+    load_transaction_state, is_duplicate, register_transaction
+)
 
 load_dotenv()
 
@@ -21,13 +29,6 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [raw_processor] %(levelname)s %(message)s"
 )
-
-MASTER_HEADERS = [
-    "transaction_id", "source_file", "import_date", "date", "description",
-    "vendor_name", "amount", "bank_name", "account_type", "card_type",
-    "category", "subcategory", "categorized_by", "confidence",
-    "flagged", "flag_reason", "exclude_from_pnl", "notes"
-]
 
 MONTHS = {
     1: "january", 2: "february", 3: "march", 4: "april",
@@ -110,73 +111,42 @@ def write_organized_csv(rows, bank, account_type, year, month, source_stem):
     return dest
 
 
-def load_master_state():
-    """Load existing dedup keys and transaction ID counters from master CSV."""
-    existing_keys, id_counter = set(), {}
-    if not MASTER_CSV.exists():
-        return existing_keys, id_counter
-    with open(MASTER_CSV, newline="") as f:
-        for row in csv.DictReader(f):
-            try:
-                existing_keys.add((
-                    row["date"], row["description"], f"{float(row['amount']):.2f}",
-                    row["bank_name"], row["account_type"], row["card_type"]
-                ))
-            except (ValueError, KeyError):
-                continue
-            parts = row.get("transaction_id", "").split("-")
-            if len(parts) == 3:
-                id_counter[parts[1]] = max(id_counter.get(parts[1], 0), int(parts[2]))
-    return existing_keys, id_counter
-
-
-def ensure_master_csv():
-    if not MASTER_CSV.exists():
-        MASTER_CSV.parent.mkdir(parents=True, exist_ok=True)
-        with open(MASTER_CSV, "w", newline="") as f:
-            csv.writer(f).writerow(MASTER_HEADERS)
-
-
 def append_to_master(rows, bank, account_type, card_type, source_file, existing_keys, id_counter):
     """Append only new (non-duplicate) rows to master CSV. Returns (added, dupes)."""
-    ensure_master_csv()
+    ensure_csv(MASTER_CSV, TRANSACTION_HEADERS)
     today = datetime.now().strftime("%Y-%m-%d")
-    new_rows, added, dupes = [], 0, 0
+    added, dupes = 0, 0
 
     for row in rows:
-        key = (row["date"], row["description"], f"{row['amount']:.2f}", bank, account_type, card_type)
-        if key in existing_keys:
+        if is_duplicate(row["date"], row["description"], row["amount"], bank, account_type, card_type, existing_keys):
             dupes += 1
             continue
-        date_key = row["date"].replace("-", "")
-        n = id_counter.get(date_key, 0) + 1
-        id_counter[date_key] = n
-        existing_keys.add(key)
-        new_rows.append({
-            "transaction_id":  f"TXN-{date_key}-{n:04d}",
-            "source_file":     str(source_file),
-            "import_date":     today,
-            "date":            row["date"],
-            "description":     row["description"],
-            "vendor_name":     row["description"],
-            "amount":          f"{row['amount']:.2f}",
-            "bank_name":       bank,
-            "account_type":    account_type,
-            "card_type":       card_type,
-            "category":        "",
-            "subcategory":     "",
-            "categorized_by":  "",
-            "confidence":      "",
-            "flagged":         False,
-            "flag_reason":     "",
+        txn_id = register_transaction(
+            row["date"], row["description"], row["amount"],
+            bank, account_type, card_type, existing_keys, id_counter
+        )
+        append_row(MASTER_CSV, TRANSACTION_HEADERS, {
+            "transaction_id":   txn_id,
+            "source_file":      str(source_file),
+            "import_date":      today,
+            "date":             row["date"],
+            "description":      row["description"],
+            "vendor_name":      row["description"],
+            "amount":           f"{row['amount']:.2f}",
+            "bank_name":        bank,
+            "account_type":     account_type,
+            "card_type":        card_type,
+            "category":         "",
+            "subcategory":      "",
+            "categorized_by":   "",
+            "confidence":       "",
+            "flagged":          False,
+            "flag_reason":      "",
             "exclude_from_pnl": False,
-            "notes":           ""
+            "notes":            ""
         })
         added += 1
 
-    if new_rows:
-        with open(MASTER_CSV, "a", newline="") as f:
-            csv.DictWriter(f, fieldnames=MASTER_HEADERS).writerows(new_rows)
     return added, dupes
 
 
@@ -218,7 +188,7 @@ def main():
     if not files:
         print("No CSV files found in raw/")
         return
-    existing_keys, id_counter = load_master_state()
+    existing_keys, id_counter = load_transaction_state(MASTER_CSV)
     for f in files:
         print(f"→ {f.name}")
         process_file(f, existing_keys, id_counter)
