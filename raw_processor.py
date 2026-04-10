@@ -118,7 +118,10 @@ def load_master_state():
     with open(MASTER_CSV, newline="") as f:
         for row in csv.DictReader(f):
             try:
-                existing_keys.add((row["date"], row["description"], f"{float(row['amount']):.2f}"))
+                existing_keys.add((
+                    row["date"], row["description"], f"{float(row['amount']):.2f}",
+                    row["bank_name"], row["account_type"], row["card_type"]
+                ))
             except (ValueError, KeyError):
                 continue
             parts = row.get("transaction_id", "").split("-")
@@ -141,7 +144,7 @@ def append_to_master(rows, bank, account_type, card_type, source_file, existing_
     new_rows, added, dupes = [], 0, 0
 
     for row in rows:
-        key = (row["date"], row["description"], f"{row['amount']:.2f}")
+        key = (row["date"], row["description"], f"{row['amount']:.2f}", bank, account_type, card_type)
         if key in existing_keys:
             dupes += 1
             continue
