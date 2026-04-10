@@ -120,9 +120,27 @@ def _build_summary(scope="all"):
     # Flagged count
     flagged = sum(1 for r in rows if r.get("flagged", "").lower() == "true")
 
+    # Transactions excluded from P&L — list every one so Claude can name them
+    excluded = [r for r in rows if r.get("exclude_from_pnl", "").lower() == "true"]
+    excluded_lines = "\n".join(
+        f"  {r['date']}  {r['account_type']}/{r['card_type']}  "
+        f"{r.get('vendor_name') or r.get('description', '?')}  "
+        f"${amt(r):,.2f}  [{r.get('subcategory') or r.get('category') or 'no reason'}]"
+        for r in sorted(excluded, key=lambda r: r["date"])
+    ) or "  None"
+
+    # Flagged transactions — list them too
+    flagged_rows = [r for r in rows if r.get("flagged", "").lower() == "true"]
+    flagged_lines = "\n".join(
+        f"  {r['date']}  {r['account_type']}  "
+        f"{r.get('vendor_name') or r.get('description', '?')}  "
+        f"${amt(r):,.2f}  confidence={r.get('confidence') or 'n/a'}  [{r.get('flag_reason') or ''}]"
+        for r in sorted(flagged_rows, key=lambda r: r["date"])
+    ) or "  None"
+
     summary = f"""BOOKKEEPING SUMMARY ({scope.upper()})
 Date range: {date_range}
-Total transactions: {len(rows)} ({len(pnl)} included in P&L, {flagged} flagged)
+Total transactions: {len(rows)} ({len(pnl)} included in P&L, {len(excluded)} excluded from P&L, {flagged} flagged)
 Total in (P&L): ${total_in:,.2f}
 Total out (P&L): ${abs(total_out):,.2f}
 Net: ${total_in + total_out:,.2f}
@@ -138,6 +156,12 @@ TOP VENDORS BY SPEND:
 
 TOP INCOME SOURCES:
 {income_lines}
+
+TRANSACTIONS EXCLUDED FROM P&L (inter-account transfers, CC payments, owner draws):
+{excluded_lines}
+
+FLAGGED TRANSACTIONS (low confidence or need review):
+{flagged_lines}
 """
     return summary
 
