@@ -17,6 +17,7 @@ from csv_utils import (
     TRANSACTION_HEADERS, ensure_csv, append_row,
     load_transaction_state, is_duplicate, register_transaction
 )
+from categorizer import load_rules, categorize
 
 load_dotenv()
 
@@ -111,16 +112,30 @@ def write_organized_csv(rows, bank, account_type, year, month, source_stem):
     return dest
 
 
-def append_to_master(rows, bank, account_type, card_type, source_file, existing_keys, id_counter):
-    """Append only new (non-duplicate) rows to master CSV. Returns (added, dupes)."""
+def append_to_master(rows, bank, account_type, card_type, source_file, existing_keys, id_counter, rules):
+    """Categorize and append only new (non-duplicate) rows to master CSV.
+
+    For each row: checks dedup, runs categorizer (rules → Claude fallback),
+    then writes the full enriched row to master_transactions.csv.
+
+    Returns (added, dupes, flagged) counts.
+    """
     ensure_csv(MASTER_CSV, TRANSACTION_HEADERS)
     today = datetime.now().strftime("%Y-%m-%d")
-    added, dupes = 0, 0
+    added, dupes, flagged = 0, 0, 0
 
     for row in rows:
         if is_duplicate(row["date"], row["description"], row["amount"], bank, account_type, card_type, existing_keys):
             dupes += 1
             continue
+
+        # Run categorizer — rules first, Claude fallback second (Phase 4)
+        cat = categorize(
+            {"description": row["description"], "account_type": account_type,
+             "amount": row["amount"], "bank_name": bank},
+            rules
+        )
+
         txn_id = register_transaction(
             row["date"], row["description"], row["amount"],
             bank, account_type, card_type, existing_keys, id_counter
@@ -131,26 +146,28 @@ def append_to_master(rows, bank, account_type, card_type, source_file, existing_
             "import_date":      today,
             "date":             row["date"],
             "description":      row["description"],
-            "vendor_name":      row["description"],
+            "vendor_name":      cat["vendor_name"],
             "amount":           f"{row['amount']:.2f}",
             "bank_name":        bank,
             "account_type":     account_type,
             "card_type":        card_type,
-            "category":         "",
-            "subcategory":      "",
-            "categorized_by":   "",
-            "confidence":       "",
-            "flagged":          False,
-            "flag_reason":      "",
-            "exclude_from_pnl": False,
-            "notes":            ""
+            "category":         cat["category"],
+            "subcategory":      cat["subcategory"],
+            "categorized_by":   cat["categorized_by"],
+            "confidence":       cat["confidence"] if cat["confidence"] is not None else "",
+            "flagged":          cat["flagged"],
+            "flag_reason":      cat["flag_reason"],
+            "exclude_from_pnl": cat["exclude_from_pnl"],
+            "notes":            cat["notes"],
         })
         added += 1
+        if cat["flagged"]:
+            flagged += 1
 
-    return added, dupes
+    return added, dupes, flagged
 
 
-def process_file(filepath, existing_keys, id_counter):
+def process_file(filepath, existing_keys, id_counter, rules):
     stem = filepath.stem
     if stem not in FILE_CONFIGS:
         logging.warning(f"Skipping unknown file: {filepath.name}")
@@ -174,10 +191,10 @@ def process_file(filepath, existing_keys, id_counter):
 
     for (year, month), month_rows in sorted(group_by_month(rows).items()):
         dest = write_organized_csv(month_rows, bank, account_type, year, month, stem)
-        added, dupes = append_to_master(
-            month_rows, bank, account_type, card_type, dest, existing_keys, id_counter
+        added, dupes, flagged = append_to_master(
+            month_rows, bank, account_type, card_type, dest, existing_keys, id_counter, rules
         )
-        msg = f"  [{MONTHS[month]} {year}] {len(month_rows)} rows → +{added} new, {dupes} dupes"
+        msg = f"  [{MONTHS[month]} {year}] {len(month_rows)} rows → +{added} new, {dupes} dupes, {flagged} flagged"
         print(msg)
         logging.info(msg)
 
@@ -188,10 +205,11 @@ def main():
     if not files:
         print("No CSV files found in raw/")
         return
+    rules = load_rules()
     existing_keys, id_counter = load_transaction_state(MASTER_CSV)
     for f in files:
         print(f"→ {f.name}")
-        process_file(f, existing_keys, id_counter)
+        process_file(f, existing_keys, id_counter, rules)
     print("\nDone. Check bookkeeping.log for details.")
 
 
