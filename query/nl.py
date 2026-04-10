@@ -17,9 +17,10 @@ from config import (
     ANTHROPIC_API_KEY, MASTER_TRANSACTIONS_CSV,
     NL_MODELS, NL_DEFAULT_MODEL,
 )
+from logger import get_logger
 
 query_bp = Blueprint("query", __name__)
-log = logging.getLogger(__name__)
+log = get_logger("query.nl")
 
 # Valid model IDs (whitelist — never pass arbitrary user strings to the API)
 _VALID_MODEL_IDS = {m["id"] for m in NL_MODELS}
@@ -225,12 +226,14 @@ def nl_query():
     log.info("NL query | model=%s scope=%s | %s", model_id, scope, question[:80])
 
     try:
+        t0 = time.time()
         summary = _build_summary(effective_scope)
         answer = _ask_claude(question, summary, model_id)
-        log.info("NL query answered OK")
+        elapsed = time.time() - t0
+        log.info("NL query answered in %.1fs | model=%s scope=%s", elapsed, model_id, scope)
         return jsonify({"answer": answer, "model": model_id, "scope": scope})
     except Exception as e:
-        log.error("NL query failed: %s", e)
+        log.error("NL query failed | model=%s | %s | error: %s", model_id, question[:60], e)
         return jsonify({"error": f"Query failed: {str(e)}"}), 500
 
 

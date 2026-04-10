@@ -46,6 +46,7 @@ from datetime import datetime
 from pathlib import Path
 
 import anthropic
+from logger import get_logger
 
 from config import (
     RULES_JSON, RULES_ARCHIVE_DIR,
@@ -55,7 +56,7 @@ from config import (
 
 SUGGESTED_RULES_FILE = RULES_ARCHIVE_DIR.parent / "rules_suggested.json"
 
-log = logging.getLogger(__name__)
+log = get_logger("categorizer")
 
 
 # ---------------------------------------------------------------------------

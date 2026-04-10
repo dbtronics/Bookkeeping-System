@@ -2,35 +2,29 @@
 """
 raw_processor.py — Temporary standalone script
 Reads raw bank CSVs → splits by month → writes to organized folder structure
-→ appends new rows to master_transactions.csv with dedup.
+→ appends new rows to master_transactions.csv with dedup + categorization.
 Disable this once n8n + /ingest/transaction endpoint is live.
-
-Uses csv_utils.py for all CSV operations so the logic stays consistent
-with the rest of the app.
 """
-import os, csv, logging
+import os
+import csv
+import time
 from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 
+from logger import get_logger
 from csv_utils import (
     TRANSACTION_HEADERS, ensure_csv, append_row,
-    load_transaction_state, is_duplicate, register_transaction
+    load_transaction_state, is_duplicate, register_transaction, read_csv,
 )
 from categorizer import load_rules, categorize, suggest_rules
-from csv_utils import read_csv
 
 load_dotenv()
+log = get_logger("raw_processor")
 
 NEXTCLOUD_BASE = Path(os.environ["NEXTCLOUD_BASE"])
-RAW_DIR = NEXTCLOUD_BASE / "bank-transactions" / "raw"
-MASTER_CSV = NEXTCLOUD_BASE / "master" / "master_transactions.csv"
-
-logging.basicConfig(
-    filename=Path(__file__).parent / "bookkeeping.log",
-    level=logging.INFO,
-    format="%(asctime)s [raw_processor] %(levelname)s %(message)s"
-)
+RAW_DIR        = NEXTCLOUD_BASE / "bank-transactions" / "raw"
+MASTER_CSV     = NEXTCLOUD_BASE / "master" / "master_transactions.csv"
 
 MONTHS = {
     1: "january", 2: "february", 3: "march", 4: "april",
@@ -49,6 +43,13 @@ FILE_CONFIGS = {
     "rbc-business-dc":   ("RBC",  "business", "chequing", "rbc"),
 }
 
+# Rough cost estimate for Haiku (~$0.001 per categorization call)
+HAIKU_COST_PER_CALL = 0.001
+
+
+# ---------------------------------------------------------------------------
+# Parsers
+# ---------------------------------------------------------------------------
 
 def parse_cibc(filepath):
     """No headers. Cols: date, description, debit, credit[, card]. Debit=out, credit=in."""
@@ -58,9 +59,9 @@ def parse_cibc(filepath):
             if len(line) < 4:
                 continue
             date_str = line[0].strip()
-            desc = line[1].strip()
-            debit = line[2].strip()
-            credit = line[3].strip()
+            desc     = line[1].strip()
+            debit    = line[2].strip()
+            credit   = line[3].strip()
             try:
                 datetime.strptime(date_str, "%Y-%m-%d")
             except ValueError:
@@ -76,9 +77,9 @@ def parse_rbc(filepath):
     with open(filepath, newline="", encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
             date_str = row.get("Transaction Date", "").strip()
-            desc1 = row.get("Description 1", "").strip()
-            desc2 = row.get("Description 2", "").strip()
-            cad = row.get("CAD$", "").strip()
+            desc1    = row.get("Description 1", "").strip()
+            desc2    = row.get("Description 2", "").strip()
+            cad      = row.get("CAD$", "").strip()
             if not date_str or not cad:
                 continue
             try:
@@ -90,6 +91,10 @@ def parse_rbc(filepath):
     return rows
 
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
 def group_by_month(rows):
     groups = {}
     for row in rows:
@@ -100,7 +105,7 @@ def group_by_month(rows):
 
 def write_organized_csv(rows, bank, account_type, year, month, source_stem):
     """Write normalized monthly CSV to structured folder. Returns dest path."""
-    card_tag = source_stem.split("-")[-1]  # cc / dc / loc
+    card_tag = source_stem.split("-")[-1]
     dest_dir = NEXTCLOUD_BASE / "bank-transactions" / account_type / str(year) / MONTHS[month]
     dest_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{bank.lower()}_{account_type}_{card_tag}_{MONTHS[month][:3]}{year}.csv"
@@ -110,37 +115,41 @@ def write_organized_csv(rows, bank, account_type, year, month, source_stem):
         w.writerow(["date", "description", "amount"])
         for r in rows:
             w.writerow([r["date"], r["description"], r["amount"]])
+    log.info("Wrote organised CSV → %s", dest.relative_to(NEXTCLOUD_BASE))
     return dest
 
 
-def append_to_master(rows, bank, account_type, card_type, source_file, existing_keys, id_counter, rules):
-    """Categorize and append only new (non-duplicate) rows to master CSV.
+def append_to_master(rows, bank, account_type, card_type, source_file,
+                     existing_keys, id_counter, rules):
+    """Categorize and append only new rows to master CSV.
 
-    For each row: checks dedup, runs categorizer (rules → Claude fallback),
-    then writes the full enriched row to master_transactions.csv.
-
-    Returns (added, dupes, flagged) counts.
+    Returns (added, dupes, flagged, api_calls).
     """
     ensure_csv(MASTER_CSV, TRANSACTION_HEADERS)
-    today = datetime.now().strftime("%Y-%m-%d")
-    added, dupes, flagged = 0, 0, 0
+    today                   = datetime.now().strftime("%Y-%m-%d")
+    added = dupes = flagged = api_calls = 0
 
     for row in rows:
-        if is_duplicate(row["date"], row["description"], row["amount"], bank, account_type, card_type, existing_keys):
+        if is_duplicate(row["date"], row["description"], row["amount"],
+                        bank, account_type, card_type, existing_keys):
             dupes += 1
+            log.debug("DUPE  %s  %s  $%.2f", row["date"], row["description"][:40], row["amount"])
             continue
 
-        # Run categorizer — rules first, Claude fallback second (Phase 4)
         cat = categorize(
             {"description": row["description"], "account_type": account_type,
              "amount": row["amount"], "bank_name": bank},
-            rules
+            rules,
         )
+
+        if cat["categorized_by"] == "ai":
+            api_calls += 1
 
         txn_id = register_transaction(
             row["date"], row["description"], row["amount"],
-            bank, account_type, card_type, existing_keys, id_counter
+            bank, account_type, card_type, existing_keys, id_counter,
         )
+
         append_row(MASTER_CSV, TRANSACTION_HEADERS, {
             "transaction_id":   txn_id,
             "source_file":      str(source_file),
@@ -161,64 +170,107 @@ def append_to_master(rows, bank, account_type, card_type, source_file, existing_
             "exclude_from_pnl": cat["exclude_from_pnl"],
             "notes":            cat["notes"],
         })
+
         added += 1
         if cat["flagged"]:
             flagged += 1
+            log.warning("FLAGGED  %s  %s  → %s (confidence=%.2f)",
+                        row["date"], row["description"][:40],
+                        cat["category"], cat["confidence"] or 0)
 
-    return added, dupes, flagged
+    return added, dupes, flagged, api_calls
 
+
+# ---------------------------------------------------------------------------
+# Per-file processor
+# ---------------------------------------------------------------------------
 
 def process_file(filepath, existing_keys, id_counter, rules):
     stem = filepath.stem
     if stem not in FILE_CONFIGS:
-        logging.warning(f"Skipping unknown file: {filepath.name}")
-        print(f"  Skipping — not in FILE_CONFIGS")
-        return
+        log.warning("Skipping unknown file: %s (not in FILE_CONFIGS)", filepath.name)
+        return 0, 0, 0, 0  # added, dupes, flagged, api_calls
 
     bank, account_type, card_type, parser = FILE_CONFIGS[stem]
-    logging.info(f"Processing {filepath.name} ({bank}, {account_type}, {card_type})")
+    log.info("── Processing %s  (%s, %s, %s)", filepath.name, bank, account_type, card_type)
 
     try:
         rows = parse_cibc(filepath) if parser == "cibc" else parse_rbc(filepath)
     except Exception as e:
-        logging.error(f"Parse error {filepath.name}: {e}")
-        print(f"  ERROR: {e}")
-        return
+        log.error("Parse error in %s: %s", filepath.name, e)
+        return 0, 0, 0, 0
 
     if not rows:
-        logging.warning(f"No rows parsed from {filepath.name}")
-        print(f"  No rows found.")
-        return
+        log.warning("No rows parsed from %s", filepath.name)
+        return 0, 0, 0, 0
+
+    log.info("Parsed %d rows from %s", len(rows), filepath.name)
+
+    file_added = file_dupes = file_flagged = file_api = 0
 
     for (year, month), month_rows in sorted(group_by_month(rows).items()):
         dest = write_organized_csv(month_rows, bank, account_type, year, month, stem)
-        added, dupes, flagged = append_to_master(
-            month_rows, bank, account_type, card_type, dest, existing_keys, id_counter, rules
+        added, dupes, flagged, api_calls = append_to_master(
+            month_rows, bank, account_type, card_type, dest,
+            existing_keys, id_counter, rules,
         )
-        msg = f"  [{MONTHS[month]} {year}] {len(month_rows)} rows → +{added} new, {dupes} dupes, {flagged} flagged"
-        print(msg)
-        logging.info(msg)
+        log.info("  [%s %d] %d rows → +%d new, %d dupes, %d flagged, %d AI calls",
+                 MONTHS[month], year, len(month_rows), added, dupes, flagged, api_calls)
 
+        file_added   += added
+        file_dupes   += dupes
+        file_flagged += flagged
+        file_api     += api_calls
+
+    return file_added, file_dupes, file_flagged, file_api
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
 def main():
-    print(f"Scanning: {RAW_DIR}\n")
+    start_time = time.time()
+    log.info("=" * 60)
+    log.info("raw_processor started")
+    log.info("Scanning: %s", RAW_DIR)
+
     files = sorted(RAW_DIR.glob("*.csv"))
     if not files:
-        print("No CSV files found in raw/")
+        log.warning("No CSV files found in raw/ — nothing to do")
         return
+
+    log.info("Found %d file(s): %s", len(files), ", ".join(f.name for f in files))
+
     rules = load_rules()
     existing_keys, id_counter = load_transaction_state(MASTER_CSV)
-    for f in files:
-        print(f"→ {f.name}")
-        process_file(f, existing_keys, id_counter, rules)
+    log.info("Master CSV has %d existing transactions", len(existing_keys))
 
-    # After all files are processed, surface AI categorization patterns as rule suggestions
+    total_added = total_dupes = total_flagged = total_api = 0
+
+    for f in files:
+        added, dupes, flagged, api_calls = process_file(
+            f, existing_keys, id_counter, rules
+        )
+        total_added   += added
+        total_dupes   += dupes
+        total_flagged += flagged
+        total_api     += api_calls
+
+    # Rule suggestions
     all_rows = read_csv(MASTER_CSV)
-    ai_rows = [r for r in all_rows if r.get("categorized_by") == "ai"]
+    ai_rows  = [r for r in all_rows if r.get("categorized_by") == "ai"]
     if ai_rows:
         suggest_rules(ai_rows)
 
-    print("\nDone. Check bookkeeping.log for details.")
+    elapsed      = time.time() - start_time
+    est_cost_cad = total_api * HAIKU_COST_PER_CALL * 1.38  # rough USD→CAD
+
+    log.info("=" * 60)
+    log.info("raw_processor finished in %.1fs", elapsed)
+    log.info("Summary: %d files | +%d new | %d dupes | %d flagged | %d AI calls (~$%.4f CAD)",
+             len(files), total_added, total_dupes, total_flagged, total_api, est_cost_cad)
+    log.info("=" * 60)
 
 
 if __name__ == "__main__":

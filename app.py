@@ -1,17 +1,25 @@
-import logging
+import time
 from functools import wraps
 from flask import Flask, request, session, redirect, url_for, render_template, jsonify
 from config import DASHBOARD_PASSWORD, FLASK_SECRET_KEY, FLASK_PORT
+from logger import get_logger
 
-# Logging
-logging.basicConfig(
-    filename="bookkeeping.log",
-    level=logging.INFO,
-    format="%(asctime)s [app] %(levelname)s %(message)s"
-)
+log = get_logger("app")
 
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
+
+@app.before_request
+def _log_request_start():
+    request._start_time = time.time()
+
+@app.after_request
+def _log_request_end(response):
+    duration_ms = int((time.time() - getattr(request, "_start_time", time.time())) * 1000)
+    # Skip static files — not useful in the log
+    if not request.path.startswith("/static"):
+        log.info("%s %s → %d  (%dms)", request.method, request.path, response.status_code, duration_ms)
+    return response
 
 # ---------------------------------------------------------------------------
 # Auth helpers
@@ -36,17 +44,17 @@ def login():
     if request.method == "POST":
         if request.form.get("password") == DASHBOARD_PASSWORD:
             session["authenticated"] = True
-            logging.info("Login successful")
+            log.info("Login successful from %s", request.remote_addr)
             return redirect(url_for("dashboard.dashboard_overview"))
         error = "Incorrect password."
-        logging.warning("Failed login attempt")
+        log.warning("Failed login attempt from %s", request.remote_addr)
     return render_template("login.html", error=error)
 
 
 @app.route("/logout")
 def logout():
     session.clear()
-    logging.info("User logged out")
+    log.info("User logged out from %s", request.remote_addr)
     return redirect(url_for("login"))
 
 
@@ -79,4 +87,7 @@ app.register_blueprint(query_bp)
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    log.info("=" * 60)
+    log.info("Bookkeeping dashboard starting on 0.0.0.0:%d", FLASK_PORT)
+    log.info("=" * 60)
     app.run(host="0.0.0.0", port=FLASK_PORT, debug=False)
