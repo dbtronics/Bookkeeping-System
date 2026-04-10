@@ -1006,6 +1006,55 @@ a:hover { text-decoration: underline; }
 .recat-result-row:last-child { border-bottom: none; }
 .recat-result-row span { color: var(--muted); }
 .recat-usd { font-size: 11px; opacity: 0.7; }
+.recat-warn-body {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.recat-warn-body strong { color: var(--text); }
+
+/* ---- Rule preview card (Phase 11 NL rule creation) ---- */
+.rule-preview-card {
+  background: var(--teal-light);
+  border: 1px solid var(--teal);
+  border-radius: var(--radius);
+  margin-top: 8px;
+  overflow: hidden;
+}
+.rule-preview-label {
+  background: var(--teal);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  letter-spacing: 0.01em;
+}
+.rule-preview-body {
+  display: flex;
+  gap: 0;
+  flex-wrap: wrap;
+}
+.rule-preview-section {
+  flex: 1;
+  min-width: 200px;
+  padding: 10px 12px;
+  border-right: 1px solid var(--border);
+}
+.rule-preview-section:last-child { border-right: none; }
+.rule-preview-heading {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.rule-preview-actions {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
 
 .login-box button:hover { opacity: 0.88; }
 .error { color: var(--red); font-size: 13px; margin-bottom: 12px; }

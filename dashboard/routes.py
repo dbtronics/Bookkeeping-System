@@ -1,12 +1,19 @@
+import datetime
 import json
 import logging
 import threading
 from functools import wraps
 from pathlib import Path
 
+import anthropic
 from flask import Blueprint, session, redirect, url_for, render_template, request, jsonify
 
-from config import RULES_JSON, RULES_ARCHIVE_DIR
+from config import (
+    RULES_JSON, RULES_ARCHIVE_DIR,
+    ANTHROPIC_API_KEY, HAIKU_MODEL, SONNET_MODEL,
+    NL_MODELS, NL_DEFAULT_MODEL, NL_MODEL_PRICING, USD_TO_CAD,
+    BUSINESS_CATEGORIES, PERSONAL_CATEGORIES,
+)
 from dashboard.aggregator import get_overview, get_business, get_personal, get_flagged
 
 # Shared state for the recategorize background job (single-user app)
@@ -311,4 +318,160 @@ def rules_dismiss():
         return jsonify({"status": "ok"})
     except Exception as e:
         log.error("Failed to dismiss suggestion: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Phase 11 — NL rule creation from chat
+# ---------------------------------------------------------------------------
+
+def _write_rule_to_json(rule_data):
+    """Archive rules.json, append the new rule, return the assigned rule id."""
+    rules_path = Path(RULES_JSON)
+    from categorizer import archive_rules
+    archive_rules()
+
+    if rules_path.exists():
+        with open(rules_path, encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        data = {"version": "1.0", "rules": []}
+
+    existing_ids = {r["id"] for r in data["rules"]}
+    rule_num = len(data["rules"]) + 1
+    new_id = f"rule-{rule_num:03d}"
+    while new_id in existing_ids:
+        rule_num += 1
+        new_id = f"rule-{rule_num:03d}"
+
+    new_rule = {
+        "id":          new_id,
+        "description": rule_data.get("description", ""),
+        "match":       rule_data.get("match", {}),
+        "apply":       rule_data.get("apply", {}),
+    }
+    data["rules"].append(new_rule)
+    data["last_updated"] = datetime.date.today().isoformat()
+
+    with open(rules_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+    return new_rule
+
+
+@dashboard_bp.route("/rules/propose", methods=["POST"])
+@login_required
+def rules_propose():
+    """Parse a natural language rule description and return a rule JSON preview.
+
+    Request:  { "description": "...", "model": "claude-haiku-..." }
+    Response: { "can_generate": true,  "rule": {...}, "explanation": "...",
+                "tokens": {...}, "cost_usd": ..., "cost_cad": ... }
+          or: { "can_generate": false, "explanation": "what info is needed" }
+    """
+    data    = request.get_json(silent=True) or {}
+    desc    = (data.get("description") or "").strip()
+    model_id = data.get("model", NL_DEFAULT_MODEL)
+    if model_id not in {m["id"] for m in NL_MODELS}:
+        model_id = NL_DEFAULT_MODEL
+    if not desc:
+        return jsonify({"error": "No description provided"}), 400
+
+    biz_cats = ", ".join(BUSINESS_CATEGORIES)
+    per_cats = ", ".join(PERSONAL_CATEGORIES)
+
+    prompt = f"""You are a rule generator for a household bookkeeping system.
+Convert the user's plain-English description into a rule JSON object.
+
+Rule schema:
+{{
+  "description": "short human-readable label",
+  "match": {{
+    "vendor_name_contains": "keyword to find in bank description (lowercase)",
+    "account_type": "business OR personal — omit key if applies to both"
+  }},
+  "apply": {{
+    "category":       "exact category from the valid list below",
+    "subcategory":    "optional short label",
+    "exclude_from_pnl": false
+  }}
+}}
+
+Valid business categories: {biz_cats}
+Valid personal categories:  {per_cats}
+
+If you can generate a rule, return ONLY this JSON (no markdown):
+{{
+  "can_generate": true,
+  "explanation":  "one sentence — what this rule will do to matching transactions",
+  "rule": {{ ...rule object... }}
+}}
+
+If the description is too vague, return ONLY:
+{{
+  "can_generate": false,
+  "explanation":  "what extra info you need"
+}}
+
+User description: {desc}"""
+
+    try:
+        client   = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        response = client.messages.create(
+            model=model_id,
+            max_tokens=512,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+
+        result = json.loads(raw)
+
+        pricing  = NL_MODEL_PRICING.get(model_id, {"input": 0.80, "output": 4.00})
+        tok_in   = response.usage.input_tokens
+        tok_out  = response.usage.output_tokens
+        cost_usd = (tok_in * pricing["input"] + tok_out * pricing["output"]) / 1_000_000
+        cost_cad = cost_usd * USD_TO_CAD
+
+        log.info("Rule proposed via chat | model=%s can_generate=%s | %s",
+                 model_id, result.get("can_generate"), desc[:60])
+
+        return jsonify({
+            **result,
+            "tokens":   {"input": tok_in, "output": tok_out},
+            "cost_usd": round(cost_usd, 6),
+            "cost_cad": round(cost_cad, 6),
+        })
+
+    except json.JSONDecodeError as e:
+        log.error("Rule propose — Claude returned invalid JSON: %s", e)
+        return jsonify({"error": "Claude returned an unexpected response. Try rephrasing."}), 500
+    except Exception as e:
+        log.error("Rule propose failed: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@dashboard_bp.route("/rules/save", methods=["POST"])
+@login_required
+def rules_save():
+    """Save a confirmed proposed rule to rules.json and apply it to master CSV.
+
+    Request:  { "rule": { description, match, apply } }
+    Response: { "status": "ok", "rule_id": "...", "rows_updated": N }
+    """
+    data      = request.get_json(silent=True) or {}
+    rule_data = data.get("rule")
+    if not rule_data or not rule_data.get("match") or not rule_data.get("apply"):
+        return jsonify({"error": "Invalid rule data"}), 400
+
+    try:
+        new_rule     = _write_rule_to_json(rule_data)
+        rows_updated = _apply_rule_to_master(new_rule)
+        log.info("Rule saved via chat: %s — updated %d rows", new_rule["id"], rows_updated)
+        return jsonify({"status": "ok", "rule_id": new_rule["id"], "rows_updated": rows_updated})
+    except Exception as e:
+        log.error("Rule save failed: %s", e)
         return jsonify({"error": str(e)}), 500

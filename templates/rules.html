@@ -7,20 +7,35 @@
 
 <!-- Recategorize button + modal -->
 <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
-  <button class="btn btn-recategorize" onclick="startRecategorize()">
+  <button class="btn btn-recategorize" onclick="showRecatWarning()">
     &#x21BB; Recategorize all transactions
   </button>
 </div>
 
 <div id="recatOverlay" class="recat-overlay" style="display:none;">
   <div class="recat-modal">
-    <h3 id="recatTitle">Recategorizing…</h3>
-    <div id="recatSpinner" class="recat-spinner"></div>
-    <div id="recatProgress" class="recat-progress-wrap" style="display:none;">
-      <div class="recat-bar-outer"><div id="recatBar" class="recat-bar-inner" style="width:0%"></div></div>
+
+    <!-- Warning step -->
+    <div id="recatWarn">
+      <h3 style="margin-bottom:12px;">&#x26A0;&#xFE0F; Recategorize all transactions?</h3>
+      <p class="recat-warn-body">This will re-run AI categorization on <strong>every non-manual transaction</strong>. Rows already matched by rules are updated for free, but uncategorized rows each trigger a Claude Haiku API call — which can add up quickly on large datasets.</p>
+      <div style="display:flex;gap:12px;margin-top:20px;">
+        <button class="btn btn-approve" style="flex:1;" onclick="confirmRecat()">Proceed</button>
+        <button class="btn btn-dismiss" style="flex:1;" onclick="closeRecat()">Cancel</button>
+      </div>
     </div>
-    <div id="recatStats" class="recat-stats"></div>
-    <button id="recatOk" class="btn btn-approve" style="display:none;margin-top:20px;width:100%;" onclick="closeRecat()">OK</button>
+
+    <!-- Progress step (hidden until Proceed) -->
+    <div id="recatRunning" style="display:none;">
+      <h3 id="recatTitle">Recategorizing…</h3>
+      <div id="recatSpinner" class="recat-spinner"></div>
+      <div id="recatProgress" class="recat-progress-wrap" style="display:none;">
+        <div class="recat-bar-outer"><div id="recatBar" class="recat-bar-inner" style="width:0%"></div></div>
+      </div>
+      <div id="recatStats" class="recat-stats"></div>
+      <button id="recatOk" class="btn btn-approve" style="display:none;margin-top:20px;width:100%;" onclick="closeRecat()">OK</button>
+    </div>
+
   </div>
 </div>
 
@@ -178,26 +193,254 @@
     }
   }
 
-  initChat({
-    windowId:      'rulesChat',
-    inputId:       'rulesInput',
-    sendBtnId:     'rulesSend',
-    modelSelectId: 'ruleModel',
-    defaultScope:  'rules',
-  });
+  // ── Phase 11: NL rule creation chat ────────────────────────────────────
+  (function initRuleChat() {
+    var win   = document.getElementById('rulesChat');
+    var input = document.getElementById('rulesInput');
+    var btn   = document.getElementById('rulesSend');
+
+    // Session cost tracking
+    var session = { inputTokens: 0, outputTokens: 0, costUsd: 0, costCad: 0 };
+    var chatCard   = win.closest('.card');
+    var cardHeader = chatCard ? chatCard.querySelector('.card-header') : null;
+    var costEl = null;
+    if (cardHeader) {
+      costEl = document.createElement('span');
+      costEl.className = 'session-cost';
+      costEl.title = 'Total token cost for this chat session';
+      costEl.textContent = 'Session: $0.00 CAD';
+      cardHeader.appendChild(costEl);
+    }
+
+    function updateSessionCost() {
+      if (!costEl) return;
+      costEl.innerHTML =
+        '<span class="cost-detail">' +
+          session.inputTokens.toLocaleString() + ' in / ' +
+          session.outputTokens.toLocaleString() + ' out' +
+        '</span>' +
+        ' &nbsp;Session: <strong>$' + session.costCad.toFixed(4) + ' CAD</strong>' +
+        ' <span class="cost-usd">($' + session.costUsd.toFixed(4) + ' USD)</span>';
+    }
+
+    function scrollBottom() { win.scrollTop = win.scrollHeight; }
+
+    function removeEmpty() {
+      var e = win.querySelector('.chat-empty');
+      if (e) e.remove();
+    }
+
+    function appendUserMsg(text) {
+      removeEmpty();
+      var div = document.createElement('div');
+      div.className = 'chat-row user';
+      div.innerHTML = '<div class="chat-bubble user">' +
+        text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
+      win.appendChild(div);
+      scrollBottom();
+    }
+
+    function appendThinking() {
+      removeEmpty();
+      var div = document.createElement('div');
+      div.className = 'chat-row ai';
+      div.id = 'rule-thinking';
+      div.innerHTML =
+        '<div class="chat-avatar">AI</div>' +
+        '<div class="chat-bubble ai thinking">' +
+          '<span class="dot-pulse"></span><span class="dot-pulse"></span><span class="dot-pulse"></span>' +
+        '</div>';
+      win.appendChild(div);
+      scrollBottom();
+      return div;
+    }
+
+    function removeThinking() {
+      var el = document.getElementById('rule-thinking');
+      if (el) el.remove();
+    }
+
+    function appendAiMsg(text, costStr) {
+      var div = document.createElement('div');
+      div.className = 'chat-row ai';
+      var metaHtml = costStr
+        ? '<div class="chat-meta"><span class="chat-cost">' + costStr + '</span><span>Haiku</span></div>'
+        : '';
+      div.innerHTML =
+        '<div class="chat-avatar">AI</div>' +
+        '<div class="chat-bubble-wrap">' +
+          '<div class="chat-bubble ai">' +
+            text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') +
+          '</div>' + metaHtml +
+        '</div>';
+      win.appendChild(div);
+      scrollBottom();
+    }
+
+    function appendRulePreview(explanation, rule, costStr) {
+      var div = document.createElement('div');
+      div.className = 'chat-row ai';
+
+      // Format match and apply fields
+      var matchLines = Object.entries(rule.match || {}).map(function(kv) {
+        return '<div><span class="rule-key">' + kv[0] + '</span>: <span class="rule-val">' + kv[1] + '</span></div>';
+      }).join('');
+      var applyLines = Object.entries(rule.apply || {}).map(function(kv) {
+        return '<div><span class="rule-key">' + kv[0] + '</span>: <span class="rule-val">' + String(kv[1]) + '</span></div>';
+      }).join('');
+
+      var ruleJson = JSON.stringify(rule);
+      var metaHtml = costStr
+        ? '<div class="chat-meta"><span class="chat-cost">' + costStr + '</span><span>Haiku</span></div>'
+        : '';
+
+      div.innerHTML =
+        '<div class="chat-avatar">AI</div>' +
+        '<div class="chat-bubble-wrap">' +
+          '<div class="chat-bubble ai">' + explanation.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>' +
+          '<div class="rule-preview-card">' +
+            '<div class="rule-preview-label">Proposed rule — ' + (rule.description || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>' +
+            '<div class="rule-preview-body">' +
+              '<div class="rule-preview-section"><div class="rule-preview-heading">Match</div><div class="mono rule-match">' + matchLines + '</div></div>' +
+              '<div class="rule-preview-section"><div class="rule-preview-heading">Apply</div><div class="mono rule-apply">' + applyLines + '</div></div>' +
+            '</div>' +
+            '<div class="rule-preview-actions">' +
+              '<button class="btn btn-sm btn-approve rule-save-btn" data-rule=\'' + ruleJson.replace(/'/g,'&#39;') + '\'>Save this rule</button>' +
+              '<button class="btn btn-sm btn-dismiss rule-dismiss-btn">Dismiss</button>' +
+            '</div>' +
+          '</div>' +
+          metaHtml +
+        '</div>';
+      win.appendChild(div);
+      scrollBottom();
+
+      // Wire up Save button
+      var saveBtn = div.querySelector('.rule-save-btn');
+      var dismissBtn = div.querySelector('.rule-dismiss-btn');
+      var previewCard = div.querySelector('.rule-preview-card');
+
+      dismissBtn.addEventListener('click', function() {
+        previewCard.style.opacity = '0.4';
+        dismissBtn.disabled = true;
+        saveBtn.disabled = true;
+        dismissBtn.textContent = 'Dismissed';
+      });
+
+      saveBtn.addEventListener('click', async function() {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving…';
+        try {
+          var ruleData = JSON.parse(saveBtn.dataset.rule);
+          var res = await fetch('/rules/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rule: ruleData }),
+          });
+          var data = await res.json();
+          if (data.status === 'ok') {
+            saveBtn.textContent = 'Saved ✓' + (data.rows_updated ? ' (' + data.rows_updated + ' rows updated)' : '');
+            dismissBtn.disabled = true;
+          } else {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save this rule';
+            alert(data.error || 'Failed to save rule.');
+          }
+        } catch (e) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save this rule';
+          alert('Network error: ' + e.message);
+        }
+      });
+    }
+
+    function appendErrorMsg(text) {
+      var div = document.createElement('div');
+      div.className = 'chat-row ai';
+      div.innerHTML =
+        '<div class="chat-avatar">AI</div>' +
+        '<div class="chat-bubble ai error">' +
+          text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') +
+        '</div>';
+      win.appendChild(div);
+      scrollBottom();
+    }
+
+    async function send() {
+      var q = input.value.trim();
+      if (!q) return;
+
+      input.value = '';
+      input.focus();
+      btn.disabled = true;
+
+      appendUserMsg(q);
+      appendThinking();
+
+      var modelId = document.getElementById('ruleModel').value;
+
+      try {
+        var res = await fetch('/rules/propose', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ description: q, model: modelId }),
+        });
+        var data = await res.json();
+        removeThinking();
+
+        if (data.error) {
+          appendErrorMsg('Error: ' + data.error);
+        } else {
+          // Build cost string
+          var costStr = '';
+          if (data.tokens && data.cost_cad !== undefined) {
+            var t = data.tokens;
+            session.inputTokens  += t.input  || 0;
+            session.outputTokens += t.output || 0;
+            session.costUsd      += data.cost_usd || 0;
+            session.costCad      += data.cost_cad || 0;
+            updateSessionCost();
+            costStr = t.input.toLocaleString() + ' in / ' + t.output.toLocaleString() + ' out · $' + data.cost_cad.toFixed(4) + ' CAD';
+          }
+
+          if (data.can_generate) {
+            appendRulePreview(data.explanation || '', data.rule || {}, costStr);
+          } else {
+            appendAiMsg(data.explanation || 'Could not generate a rule — please provide more detail.', costStr);
+          }
+        }
+      } catch (e) {
+        removeThinking();
+        appendErrorMsg('Network error: ' + e.message);
+      }
+
+      btn.disabled = false;
+    }
+
+    btn.addEventListener('click', send);
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+  })();
 
   // ── Recategorize modal ──────────────────────────────────────────────────
   var _recatTimer = null;
 
-  function startRecategorize() {
-    // Reset modal
+  function showRecatWarning() {
+    document.getElementById('recatWarn').style.display = 'block';
+    document.getElementById('recatRunning').style.display = 'none';
+    document.getElementById('recatOverlay').style.display = 'flex';
+  }
+
+  function confirmRecat() {
+    document.getElementById('recatWarn').style.display = 'none';
+    document.getElementById('recatRunning').style.display = 'block';
+    // Reset progress UI
     document.getElementById('recatTitle').textContent = 'Recategorizing…';
     document.getElementById('recatSpinner').style.display = 'block';
     document.getElementById('recatProgress').style.display = 'none';
     document.getElementById('recatBar').style.width = '0%';
     document.getElementById('recatStats').textContent = 'Starting…';
     document.getElementById('recatOk').style.display = 'none';
-    document.getElementById('recatOverlay').style.display = 'flex';
 
     fetch('/rules/recategorize', { method: 'POST' })
       .then(r => r.json())
@@ -207,6 +450,8 @@
       })
       .catch(e => showRecatError(e.message));
   }
+
+  function startRecategorize() { showRecatWarning(); }
 
   function pollRecat() {
     fetch('/rules/recategorize/status')
