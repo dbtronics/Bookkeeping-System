@@ -25,103 +25,157 @@
 
 <!-- Income sources + Expense breakdown -->
 <div class="two-col-grid">
-  <div class="card">
-    <div class="card-header"><h2>Income sources</h2></div>
-    {% if income_by_source %}
-    <div class="bar-list">
-      {% set max_inc = income_by_source[0][1] if income_by_source else 1 %}
-      {% for source, amt in income_by_source %}
-      <div class="bar-item">
-        <div class="bar-label">{{ source }}</div>
-        <div class="bar-track">
-          <div class="bar-fill purple" style="width: {{ [(amt / max_inc * 100)|round|int, 100]|min }}%"></div>
-        </div>
-        <div class="bar-value">${{ "{:,.2f}".format(amt) }}</div>
-      </div>
-      {% endfor %}
+  <div class="card accordion-card">
+    <div class="card-header accordion-toggle" onclick="toggleAccordion(this)">
+      <h2>Income sources</h2>
+      <span class="accordion-chevron">&#8250;</span>
     </div>
-    {% else %}
-    <p class="empty">No income in this period.</p>
-    {% endif %}
+    <div class="accordion-body">
+      {% if income_by_source %}
+      <div class="bar-list">
+        {% set max_inc = income_by_source[0][1] if income_by_source else 1 %}
+        {% for source, amt in income_by_source %}
+        <div class="bar-item">
+          <div class="bar-label">{{ source }}</div>
+          <div class="bar-track">
+            <div class="bar-fill purple" style="width: {{ [(amt / max_inc * 100)|round|int, 100]|min }}%"></div>
+          </div>
+          <div class="bar-value">${{ "{:,.2f}".format(amt) }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty">No income in this period.</p>
+      {% endif %}
+    </div>
   </div>
 
-  <div class="card">
-    <div class="card-header"><h2>Expenses by category</h2></div>
-    {% if expenses_by_category %}
-    <div class="bar-list">
-      {% set max_exp = expenses_by_category[0][1] if expenses_by_category else 1 %}
-      {% for cat, amt in expenses_by_category %}
-      <div class="bar-item">
-        <div class="bar-label">{{ cat }}</div>
-        <div class="bar-track">
-          <div class="bar-fill red" style="width: {{ [(amt / max_exp * 100)|round|int, 100]|min }}%"></div>
-        </div>
-        <div class="bar-value">${{ "{:,.2f}".format(amt) }}</div>
-      </div>
-      {% endfor %}
+  <div class="card accordion-card">
+    <div class="card-header accordion-toggle" onclick="toggleAccordion(this)">
+      <h2>Expenses by category</h2>
+      <span class="accordion-chevron">&#8250;</span>
     </div>
-    {% else %}
-    <p class="empty">No expenses in this period.</p>
-    {% endif %}
+    <div class="accordion-body">
+      {% if expenses_by_category %}
+      <div class="bar-list">
+        {% set max_exp = expenses_by_category[0][1] if expenses_by_category else 1 %}
+        {% for cat, amt in expenses_by_category %}
+        <div class="bar-item">
+          <div class="bar-label">{{ cat }}</div>
+          <div class="bar-track">
+            <div class="bar-fill red" style="width: {{ [(amt / max_exp * 100)|round|int, 100]|min }}%"></div>
+          </div>
+          <div class="bar-value">${{ "{:,.2f}".format(amt) }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty">No expenses in this period.</p>
+      {% endif %}
+    </div>
   </div>
 </div>
 
 <!-- Top vendors -->
 {% if expenses_by_vendor %}
-<div class="card">
-  <div class="card-header"><h2>Top vendors by spend</h2></div>
-  <div class="bar-list">
-    {% set max_v = expenses_by_vendor[0][1] if expenses_by_vendor else 1 %}
-    {% for vendor, amt in expenses_by_vendor %}
-    <div class="bar-item">
-      <div class="bar-label">{{ vendor }}</div>
-      <div class="bar-track">
-        <div class="bar-fill red" style="width: {{ [(amt / max_v * 100)|round|int, 100]|min }}%"></div>
+<div class="card accordion-card">
+  <div class="card-header accordion-toggle" onclick="toggleAccordion(this)">
+    <h2>Top vendors by spend</h2>
+    <span class="accordion-chevron">&#8250;</span>
+  </div>
+  <div class="accordion-body">
+    <div class="bar-list">
+      {% set max_v = expenses_by_vendor[0][1] if expenses_by_vendor else 1 %}
+      {% for vendor, amt in expenses_by_vendor %}
+      <div class="bar-item">
+        <div class="bar-label">{{ vendor }}</div>
+        <div class="bar-track">
+          <div class="bar-fill red" style="width: {{ [(amt / max_v * 100)|round|int, 100]|min }}%"></div>
+        </div>
+        <div class="bar-value">${{ "{:,.2f}".format(amt) }}</div>
       </div>
-      <div class="bar-value">${{ "{:,.2f}".format(amt) }}</div>
+      {% endfor %}
     </div>
-    {% endfor %}
   </div>
 </div>
 {% endif %}
 
-<!-- Transaction table -->
+<!-- Transactions / Categories toggle card -->
 <div class="card">
   <div class="card-header">
-    <h2>Transactions</h2>
-    <span class="muted">{{ transactions|length }} rows</span>
+    <h2 id="txn-card-title">Transactions</h2>
+    <div class="view-toggle" style="margin-left:auto;">
+      <button class="toggle-btn active" id="btn-transactions" onclick="setView('transactions')">Transactions</button>
+      <button class="toggle-btn" id="btn-categories" onclick="setView('categories')">Categories</button>
+    </div>
   </div>
-  <div class="table-scroll">
-    <table class="txn-table" id="per-table">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Description</th>
-          <th>Category</th>
-          <th>By</th>
-          <th class="num">Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for t in transactions %}
-        <tr class="{% if t.flagged == 'True' %}row-flagged{% endif %} {% if t.exclude_from_pnl == 'True' %}row-excluded{% endif %}">
-          <td class="mono">{{ t.date }}</td>
-          <td class="desc-cell">
-            <span class="vendor">{{ t.vendor_name or t.description }}</span>
-            {% if t.exclude_from_pnl == 'True' %}<span class="pill grey">excl.</span>{% endif %}
-            {% if t.flagged == 'True' %}<span class="pill orange">flagged</span>{% endif %}
-          </td>
-          <td>{{ t.category }}{% if t.subcategory %}<span class="muted"> / {{ t.subcategory }}</span>{% endif %}</td>
-          <td><span class="pill {% if t.categorized_by == 'rule' %}blue{% elif t.categorized_by == 'ai' %}teal{% else %}grey{% endif %}">{{ t.categorized_by }}</span></td>
-          <td class="num mono {% if t.amount|float >= 0 %}positive{% else %}negative{% endif %}">
-            {% if t.amount|float >= 0 %}+{% endif %}${{ "{:,.2f}".format(t.amount|float|abs) }}
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="5" class="empty">No transactions.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+
+  <!-- Transactions view -->
+  <div id="view-transactions">
+    <div class="table-scroll">
+      <table class="txn-table" id="per-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Description</th>
+            <th>Category</th>
+            <th>By</th>
+            <th class="num">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in transactions %}
+          <tr class="{% if t.flagged == 'True' %}row-flagged{% endif %} {% if t.exclude_from_pnl == 'True' %}row-excluded{% endif %}">
+            <td class="mono">{{ t.date }}</td>
+            <td class="desc-cell">
+              <span class="vendor">{{ t.vendor_name or t.description }}</span>
+              {% if t.exclude_from_pnl == 'True' %}<span class="pill grey">excl.</span>{% endif %}
+              {% if t.flagged == 'True' %}<span class="pill orange">flagged</span>{% endif %}
+            </td>
+            <td>{{ t.category }}{% if t.subcategory %}<span class="muted"> / {{ t.subcategory }}</span>{% endif %}</td>
+            <td><span class="pill {% if t.categorized_by == 'rule' %}blue{% elif t.categorized_by == 'ai' %}teal{% else %}grey{% endif %}">{{ t.categorized_by }}</span></td>
+            <td class="num mono {% if t.amount|float >= 0 %}positive{% else %}negative{% endif %}">
+              {% if t.amount|float >= 0 %}+{% endif %}${{ "{:,.2f}".format(t.amount|float|abs) }}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="empty">No transactions.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Categories view -->
+  <div id="view-categories" style="display:none;">
+    <div class="cat-tree">
+      {% for cat in categories_tree %}
+      <div class="cat-row{% if cat.subcategories %} cat-has-children{% endif %}">
+        <div class="cat-header{% if cat.subcategories %} cat-expandable{% endif %}"
+             {% if cat.subcategories %}onclick="toggleCat(this)"{% endif %}>
+          <span class="cat-name">{{ cat.name }}</span>
+          {% if cat.subcategories %}<span class="cat-chevron">&#8250;</span>{% endif %}
+          <span class="cat-total {% if cat.total >= 0 %}positive{% else %}negative{% endif %}">
+            {% if cat.total >= 0 %}+{% endif %}${{ "{:,.2f}".format(cat.total|abs) }}
+          </span>
+        </div>
+        {% if cat.subcategories %}
+        <div class="cat-children">
+          {% for sub in cat.subcategories %}
+          <div class="cat-subrow">
+            <span class="cat-subname">{{ sub.name }}</span>
+            <span class="cat-total {% if sub.total >= 0 %}positive{% else %}negative{% endif %}">
+              {% if sub.total >= 0 %}+{% endif %}${{ "{:,.2f}".format(sub.total|abs) }}
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      {% else %}
+      <p class="empty" style="padding:1.5rem;">No data for this period.</p>
+      {% endfor %}
+    </div>
   </div>
 </div>
 
@@ -129,5 +183,29 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='pagination.js') }}"></script>
-<script>initPagination('per-table');</script>
+<script>
+  initPagination('per-table');
+
+  function toggleAccordion(header) {
+    var card = header.closest('.accordion-card');
+    card.classList.toggle('card--collapsed');
+  }
+
+  function setView(view) {
+    document.getElementById('view-transactions').style.display = view === 'transactions' ? '' : 'none';
+    document.getElementById('view-categories').style.display   = view === 'categories'   ? '' : 'none';
+    document.getElementById('btn-transactions').classList.toggle('active', view === 'transactions');
+    document.getElementById('btn-categories').classList.toggle('active', view === 'categories');
+    document.getElementById('txn-card-title').textContent = view === 'categories' ? 'Categories' : 'Transactions';
+  }
+
+  function toggleCat(header) {
+    var row = header.closest('.cat-row');
+    var children = row.querySelector('.cat-children');
+    var chevron  = header.querySelector('.cat-chevron');
+    var open = row.classList.toggle('cat-open');
+    if (children) children.style.display = open ? '' : 'none';
+    if (chevron)  chevron.style.transform = open ? 'rotate(90deg)' : '';
+  }
+</script>
 {% endblock %}

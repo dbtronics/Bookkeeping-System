@@ -7,60 +7,43 @@
 
 <!-- Suggested rules (approve / dismiss) -->
 {% if suggested %}
-<div class="card suggested-section">
-  <div class="card-header">
+<div class="card accordion-card suggested-section">
+  <div class="card-header accordion-toggle" onclick="toggleAccordion(this)">
     <h2>Suggested rules</h2>
-    <span class="badge">{{ suggested|length }}</span>
+    <span class="badge" style="margin-right:auto;">{{ suggested|length }}</span>
+    <span class="accordion-chevron">&#8250;</span>
   </div>
-  <p class="muted" style="margin-bottom: 1rem;">Claude identified these patterns. One-click to approve or dismiss.</p>
-  <div class="suggestion-list">
-    {% for s in suggested %}
-    <div class="suggestion-row" id="sug-{{ loop.index }}">
-      <div class="sug-body">
-        <div class="sug-desc">{{ s.description }}</div>
-        <div class="sug-detail muted">
-          Match: <span class="mono">{{ s.match | tojson }}</span> →
-          Apply: <span class="mono">{{ s.apply | tojson }}</span>
+  <div class="accordion-body">
+    <p class="muted" style="margin-bottom:1rem;">Claude identified these patterns. One-click to approve or dismiss.</p>
+    <div class="suggestion-list" id="suggestion-list">
+      {% for s in suggested %}
+      <div class="suggestion-row" id="sug-{{ loop.index }}">
+        <div class="sug-body">
+          <div class="sug-desc">{{ s.description }}</div>
+          <div class="sug-detail muted">
+            Match: <span class="mono">{{ s.match | tojson }}</span> →
+            Apply: <span class="mono">{{ s.apply | tojson }}</span>
+          </div>
+        </div>
+        <div class="sug-actions">
+          <button class="btn btn-sm btn-approve" data-sug='{{ s | tojson }}' onclick="approveRule(this)">Approve</button>
+          <button class="btn btn-sm btn-dismiss" data-sug='{{ s | tojson }}' onclick="dismissRule(this)">Dismiss</button>
         </div>
       </div>
-      <div class="sug-actions">
-        <button class="btn btn-sm btn-approve" data-sug='{{ s | tojson }}' onclick="approveRule(this)">Approve</button>
-        <button class="btn btn-sm btn-dismiss" data-sug='{{ s | tojson }}' onclick="dismissRule(this)">Dismiss</button>
-      </div>
+      {% endfor %}
     </div>
-    {% endfor %}
   </div>
 </div>
 {% endif %}
 
-<!-- Natural language rule creation -->
-<div class="card">
-  <div class="card-header">
-    <h2>Add or change a rule</h2>
-    <span class="badge-pill">AI</span>
-  </div>
-  <p class="muted" style="margin-bottom:12px;">Describe the rule you want — e.g. "Always categorize GoHighLevel as SaaS tools for business."</p>
-  <div class="chat-window" id="rulesChat">
-    <div class="chat-empty">Describe a rule and I'll help you write it…</div>
-  </div>
-  <div class="chat-input-bar">
-    <select id="ruleModel" class="model-select" title="Model">
-      <option value="claude-haiku-4-5-20251001">Haiku</option>
-      <option value="claude-sonnet-4-6">Sonnet</option>
-    </select>
-    <input type="text" id="rulesInput" class="chat-input" placeholder="Describe a rule…">
-    <button id="rulesSend" class="chat-send-btn" title="Send">
-      <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
-    </button>
-  </div>
-</div>
-
 <!-- Active rules table -->
-<div class="card">
-  <div class="card-header">
+<div class="card accordion-card">
+  <div class="card-header accordion-toggle" onclick="toggleAccordion(this)">
     <h2>Active rules</h2>
-    <span class="muted">{{ rules|length }} rules — applied in order, first match wins</span>
+    <span class="muted" style="margin-right:auto;">{{ rules|length }} rules — first match wins</span>
+    <span class="accordion-chevron">&#8250;</span>
   </div>
+  <div class="accordion-body">
 
   <div class="table-scroll">
     <table class="txn-table rules-table" id="rules-table">
@@ -108,6 +91,29 @@
         {% endfor %}
       </tbody>
     </table>
+  </div>
+  </div>{# /accordion-body #}
+</div>{# /card #}
+
+<!-- NL rule creation chat — always at bottom -->
+<div class="card">
+  <div class="card-header">
+    <h2>Add or change a rule</h2>
+    <span class="badge-pill">AI</span>
+  </div>
+  <p class="muted" style="margin-bottom:12px;">Describe the rule you want — e.g. "Always categorize GoHighLevel as SaaS tools for business."</p>
+  <div class="chat-window" id="rulesChat">
+    <div class="chat-empty">Describe a rule and I'll help you write it…</div>
+  </div>
+  <div class="chat-input-bar">
+    <select id="ruleModel" class="model-select" title="Model">
+      <option value="claude-haiku-4-5-20251001">Haiku</option>
+      <option value="claude-sonnet-4-6">Sonnet</option>
+    </select>
+    <input type="text" id="rulesInput" class="chat-input" placeholder="Describe a rule…">
+    <button id="rulesSend" class="chat-send-btn" title="Send">
+      <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+    </button>
   </div>
 </div>
 
@@ -172,6 +178,12 @@
 <script src="{{ url_for('static', filename='chat.js') }}"></script>
 <script>
   initPagination('rules-table');
+  initListPagination('suggestion-list', { defaultPageSize: 5 });
+
+  function toggleAccordion(header) {
+    var card = header.closest('.accordion-card');
+    card.classList.toggle('card--collapsed');
+  }
 
   async function approveRule(btn) {
     const suggestion = JSON.parse(btn.dataset.sug);

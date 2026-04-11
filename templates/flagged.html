@@ -13,53 +13,55 @@
   </div>
 </div>
 
-<div class="card">
-  <div class="card-header">
+<div class="card accordion-card">
+  <div class="card-header accordion-toggle" onclick="toggleAccordion(this)">
     <h2>Transactions needing review</h2>
-    <span class="muted">{{ count }} items</span>
+    <span class="muted" style="margin-right:auto;margin-left:8px;">{{ count }} items</span>
+    <span class="accordion-chevron">&#8250;</span>
   </div>
-
-  {% if flagged %}
-  <div class="table-scroll">
-    <table class="txn-table" id="flagged-table">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Description</th>
-          <th>Category</th>
-          <th>Confidence</th>
-          <th>Reason</th>
-          <th class="num">Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for t in flagged %}
-        <tr class="row-flagged">
-          <td class="mono">{{ t.date }}</td>
-          <td class="desc-cell">
-            <span class="vendor">{{ t.vendor_name or t.description }}</span>
-            <div class="desc-raw muted">{{ t.description }}</div>
-          </td>
-          <td>{{ t.category }}{% if t.subcategory %}<span class="muted"> / {{ t.subcategory }}</span>{% endif %}</td>
-          <td class="mono">
-            {% if t.confidence %}
-              <span class="conf conf-{{ 'low' if t.confidence|float < 0.5 else 'mid' if t.confidence|float < 0.7 else 'high' }}">
-                {{ "{:.0%}".format(t.confidence|float) }}
-              </span>
-            {% else %}—{% endif %}
-          </td>
-          <td class="muted">{{ t.flag_reason or '—' }}</td>
-          <td class="num mono {% if t.amount|float >= 0 %}positive{% else %}negative{% endif %}">
-            {% if t.amount|float >= 0 %}+{% endif %}${{ "{:,.2f}".format(t.amount|float|abs) }}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="accordion-body">
+    {% if flagged %}
+    <div class="table-scroll">
+      <table class="txn-table" id="flagged-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Description</th>
+            <th>Category</th>
+            <th>Confidence</th>
+            <th>Reason</th>
+            <th class="num">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in flagged %}
+          <tr class="row-flagged">
+            <td class="mono">{{ t.date }}</td>
+            <td class="desc-cell">
+              <span class="vendor">{{ t.vendor_name or t.description }}</span>
+              <div class="desc-raw muted">{{ t.description }}</div>
+            </td>
+            <td>{{ t.category }}{% if t.subcategory %}<span class="muted"> / {{ t.subcategory }}</span>{% endif %}</td>
+            <td class="mono">
+              {% if t.confidence %}
+                <span class="conf conf-{{ 'low' if t.confidence|float < 0.5 else 'mid' if t.confidence|float < 0.7 else 'high' }}">
+                  {{ "{:.0%}".format(t.confidence|float) }}
+                </span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="muted">{{ t.flag_reason or '—' }}</td>
+            <td class="num mono {% if t.amount|float >= 0 %}positive{% else %}negative{% endif %}">
+              {% if t.amount|float >= 0 %}+{% endif %}${{ "{:,.2f}".format(t.amount|float|abs) }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty" style="padding: 2rem;">No flagged transactions. All clear.</p>
+    {% endif %}
   </div>
-  {% else %}
-  <p class="empty" style="padding: 2rem;">No flagged transactions. All clear.</p>
-  {% endif %}
 </div>
 
 <div class="card">
@@ -97,5 +99,10 @@
     modelSelectId: 'fixModel',
     defaultScope:  'all',
   });
+
+  function toggleAccordion(header) {
+    var card = header.closest('.accordion-card');
+    card.classList.toggle('card--collapsed');
+  }
 </script>
 {% endblock %}

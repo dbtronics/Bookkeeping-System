@@ -157,6 +157,7 @@ def get_business(month_filter=None):
         "expenses_by_category": _sort_dict(exp_by_cat),
         "expenses_by_vendor": _sort_dict(exp_by_vendor, top=10),
         "transactions": transactions,
+        "categories_tree": _build_categories_tree(_pnl_rows(rows)),
     }
 
 
@@ -200,6 +201,7 @@ def get_personal(month_filter=None):
         "expenses_by_category": _sort_dict(exp_by_cat),
         "expenses_by_vendor": _sort_dict(exp_by_vendor, top=10),
         "transactions": transactions,
+        "categories_tree": _build_categories_tree(_pnl_rows(rows)),
     }
 
 
@@ -230,3 +232,31 @@ def _sort_dict(d, top=None):
     if top:
         items = items[:top]
     return [(k, round(v, 2)) for k, v in items]
+
+
+def _build_categories_tree(rows):
+    """Build [{name, total, subcategories:[{name, total}]}] sorted by abs total.
+
+    Includes all rows (income + expenses). Sign is preserved so the template
+    can colour income green and expenses red.
+    """
+    cat_totals = defaultdict(float)
+    subcat_totals = defaultdict(lambda: defaultdict(float))
+
+    for r in rows:
+        cat    = r.get("category") or "Uncategorized"
+        subcat = (r.get("subcategory") or "").strip()
+        amt    = _amount(r)
+        cat_totals[cat] += amt
+        if subcat:
+            subcat_totals[cat][subcat] += amt
+
+    result = []
+    for cat, total in sorted(cat_totals.items(), key=lambda x: abs(x[1]), reverse=True):
+        subcats = sorted(
+            [{"name": s, "total": round(t, 2)} for s, t in subcat_totals[cat].items()],
+            key=lambda x: abs(x["total"]),
+            reverse=True,
+        )
+        result.append({"name": cat, "total": round(total, 2), "subcategories": subcats})
+    return result

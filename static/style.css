@@ -1104,6 +1104,86 @@ a:hover { text-decoration: underline; }
 }
 .edit-rule-input:focus { outline: 2px solid var(--teal); border-color: transparent; }
 
+/* ---- Accordion cards ------------------------------------------------- */
+.accordion-toggle {
+  cursor: pointer;
+  user-select: none;
+}
+.accordion-toggle:hover { background: var(--bg); }
+.accordion-chevron {
+  font-size: 18px;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+  display: inline-block;
+  margin-left: 8px;
+}
+/* Default state: chevron points right (▶), body visible */
+.accordion-body { display: block; }
+/* Collapsed state: chevron rotates 90°, body hidden */
+.card--collapsed .accordion-body { display: none; }
+.card--collapsed .accordion-chevron { transform: rotate(90deg); }
+
+/* ---- Transactions / Categories toggle -------------------------------- */
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.toggle-btn {
+  background: transparent;
+  border: none;
+  padding: 5px 16px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.toggle-btn:hover { background: var(--bg); color: var(--text); }
+.toggle-btn.active {
+  background: var(--teal);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ---- Categories tree ------------------------------------------------- */
+.cat-tree { padding: 0 0 8px; }
+.cat-row { border-bottom: 1px solid var(--border); }
+.cat-row:last-child { border-bottom: none; }
+.cat-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  gap: 8px;
+}
+.cat-header.cat-expandable { cursor: pointer; }
+.cat-header.cat-expandable:hover { background: var(--bg); }
+.cat-name { font-weight: 600; font-size: 14px; flex: 1; }
+.cat-chevron {
+  font-size: 15px;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+  display: inline-block;
+}
+.cat-total { font-family: 'DM Mono', monospace; font-size: 14px; font-weight: 600; }
+.cat-children { display: none; background: var(--bg); border-top: 1px solid var(--border); }
+.cat-subrow {
+  display: flex;
+  align-items: center;
+  padding: 7px 16px 7px 36px;
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+}
+.cat-subrow:last-child { border-bottom: none; }
+.cat-subname {
+  flex: 1;
+  font-size: 13px;
+  color: var(--muted);
+}
+.cat-subrow .cat-total { font-size: 13px; }
+
 .login-box button:hover { opacity: 0.88; }
 .error { color: var(--red); font-size: 13px; margin-bottom: 12px; }
 .login-error {
