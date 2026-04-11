@@ -204,7 +204,7 @@
     var children = row.querySelector('.cat-children');
     var chevron  = header.querySelector('.cat-chevron');
     var open = row.classList.toggle('cat-open');
-    if (children) children.style.display = open ? '' : 'none';
+    if (children) children.style.display = open ? 'block' : 'none';
     if (chevron)  chevron.style.transform = open ? 'rotate(90deg)' : '';
   }
 </script>
