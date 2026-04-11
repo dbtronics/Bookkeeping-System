@@ -252,9 +252,14 @@ def _build_categories_tree(rows):
         amt    = _amount(r)
         cat_totals[cat] += amt
         txn = {
-            "date":   r.get("date", ""),
-            "vendor": r.get("vendor_name") or r.get("description", ""),
-            "amount": round(amt, 2),
+            "id":      r.get("transaction_id", ""),
+            "date":    r.get("date", ""),
+            "vendor":  r.get("vendor_name") or r.get("description", ""),
+            "desc":    r.get("description", ""),
+            "amount":  round(amt, 2),
+            "account": r.get("account_type", ""),
+            "cat":     r.get("category", ""),
+            "subcat":  r.get("subcategory", ""),
         }
         if subcat:
             subcat_totals[cat][subcat] += amt

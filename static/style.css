@@ -1205,6 +1205,33 @@ a:hover { text-decoration: underline; }
 .cat-txn-vendor { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cat-txn-amount { flex-shrink: 0; font-family: 'DM Mono', monospace; font-weight: 600; }
 
+/* Edit button on transaction rows */
+.btn-txn-edit {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+.cat-txn-row:hover .btn-txn-edit { opacity: 1; }
+.btn-txn-edit:hover { color: var(--teal); }
+
+/* Transaction info in edit modal */
+.txn-edit-info {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  margin-top: 6px;
+  overflow: hidden;
+}
+
 .login-box button:hover { opacity: 0.88; }
 .error { color: var(--red); font-size: 13px; margin-bottom: 12px; }
 .login-error {

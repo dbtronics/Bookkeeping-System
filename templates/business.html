@@ -176,12 +176,13 @@
             {% if sub.transactions %}
             <div class="cat-txn-list">
               {% for t in sub.transactions %}
-              <div class="cat-txn-row">
+              <div class="cat-txn-row" data-txn='{{ t | tojson }}'>
                 <span class="cat-txn-date mono">{{ t.date }}</span>
                 <span class="cat-txn-vendor">{{ t.vendor }}</span>
                 <span class="cat-txn-amount {% if t.amount >= 0 %}positive{% else %}negative{% endif %}">
                   {% if t.amount >= 0 %}+{% endif %}${{ "{:,.2f}".format(t.amount|abs) }}
                 </span>
+                <button class="btn-txn-edit" onclick="openTxnEdit(this)" title="Edit category">&#9998;</button>
               </div>
               {% endfor %}
             </div>
@@ -190,12 +191,13 @@
           {% endfor %}
           {# Direct transactions (no subcategory) #}
           {% for t in cat.transactions %}
-          <div class="cat-txn-row cat-txn-direct">
+          <div class="cat-txn-row cat-txn-direct" data-txn='{{ t | tojson }}'>
             <span class="cat-txn-date mono">{{ t.date }}</span>
             <span class="cat-txn-vendor">{{ t.vendor }}</span>
             <span class="cat-txn-amount {% if t.amount >= 0 %}positive{% else %}negative{% endif %}">
               {% if t.amount >= 0 %}+{% endif %}${{ "{:,.2f}".format(t.amount|abs) }}
             </span>
+            <button class="btn-txn-edit" onclick="openTxnEdit(this)" title="Edit category">&#9998;</button>
           </div>
           {% endfor %}
         </div>
@@ -204,6 +206,43 @@
       {% else %}
       <p class="empty" style="padding:1.5rem;">No data for this period.</p>
       {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Transaction edit modal -->
+<div id="txnEditOverlay" class="recat-overlay" style="display:none;">
+  <div class="recat-modal" style="width:460px;max-width:95vw;">
+    <h3 style="margin-bottom:4px;">Edit transaction category</h3>
+    <div id="te-info" class="txn-edit-info"></div>
+
+    <div class="edit-rule-field" style="margin-top:14px;">
+      <label>Category</label>
+      <select id="te-category" class="edit-rule-input">
+        <optgroup label="Business">
+          {% for c in business_categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </optgroup>
+        <optgroup label="Personal">
+          {% for c in personal_categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </optgroup>
+      </select>
+    </div>
+    <div class="edit-rule-field">
+      <label>Subcategory <span class="muted">(optional)</span></label>
+      <input type="text" id="te-subcategory" class="edit-rule-input" placeholder="e.g. CRM, Groceries…">
+    </div>
+    <div class="edit-rule-field" style="flex-direction:row;align-items:center;gap:10px;margin-top:4px;">
+      <input type="checkbox" id="te-make-rule" style="width:auto;margin:0;">
+      <label for="te-make-rule" style="margin:0;font-size:13px;">Also create a rule for future transactions like this</label>
+    </div>
+
+    <div id="te-error" style="color:var(--red);font-size:13px;margin-top:8px;display:none;"></div>
+
+    <p class="muted" style="font-size:12px;margin-top:14px;margin-bottom:8px;">How should this change be applied?</p>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button class="btn btn-approve" style="width:100%;" id="te-btn-single" onclick="saveTxnEdit('single')">Save for this transaction only</button>
+      <button class="btn btn-approve" style="width:100%;background:var(--blue);border-color:var(--blue);" id="te-btn-all" onclick="saveTxnEdit('all')">Save for all similar transactions</button>
+      <button class="btn btn-dismiss" style="width:100%;" onclick="closeTxnEdit()">Cancel</button>
     </div>
   </div>
 </div>
@@ -244,6 +283,79 @@
     var open     = group.classList.toggle('cat-open');
     if (list)    list.style.display    = open ? 'block' : 'none';
     if (chevron) chevron.style.transform = open ? 'rotate(90deg)' : '';
+  }
+
+  // ── Transaction inline edit ─────────────────────────────────────────────
+  var _editTxn = null;
+
+  function openTxnEdit(btn) {
+    _editTxn = JSON.parse(btn.closest('.cat-txn-row').dataset.txn);
+    document.getElementById('te-category').value    = _editTxn.cat || '';
+    document.getElementById('te-subcategory').value = _editTxn.subcat || '';
+    document.getElementById('te-make-rule').checked = false;
+    document.getElementById('te-error').style.display = 'none';
+    document.getElementById('te-info').innerHTML =
+      '<strong>' + (_editTxn.vendor || '').replace(/</g,'&lt;') + '</strong>' +
+      '<span class="muted" style="margin-left:10px;">' + _editTxn.date + '</span>' +
+      '<span style="float:right;font-family:monospace;font-weight:600;" class="' +
+        (_editTxn.amount >= 0 ? 'positive' : 'negative') + '">' +
+        (_editTxn.amount >= 0 ? '+' : '') + '$' + Math.abs(_editTxn.amount).toLocaleString('en-CA', {minimumFractionDigits:2}) +
+      '</span>';
+    ['te-btn-single','te-btn-all'].forEach(function(id){ document.getElementById(id).disabled = false; });
+    document.getElementById('te-btn-single').textContent = 'Save for this transaction only';
+    document.getElementById('te-btn-all').textContent    = 'Save for all similar transactions';
+    document.getElementById('txnEditOverlay').style.display = 'flex';
+  }
+
+  function closeTxnEdit() {
+    document.getElementById('txnEditOverlay').style.display = 'none';
+    _editTxn = null;
+  }
+
+  async function saveTxnEdit(scope) {
+    var errEl    = document.getElementById('te-error');
+    var category = document.getElementById('te-category').value;
+    var subcat   = document.getElementById('te-subcategory').value.trim();
+    var makeRule = document.getElementById('te-make-rule').checked;
+
+    if (!category) { errEl.textContent = 'Please select a category.'; errEl.style.display = 'block'; return; }
+
+    var btnId = scope === 'single' ? 'te-btn-single' : 'te-btn-all';
+    var btn   = document.getElementById(btnId);
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    errEl.style.display = 'none';
+
+    try {
+      var res = await fetch('/transactions/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transaction_id: _editTxn.id,
+          category:       category,
+          subcategory:    subcat,
+          scope:          scope,
+          vendor_name:    _editTxn.vendor,
+          account_type:   _editTxn.account,
+          create_rule:    makeRule && scope === 'all',
+        }),
+      });
+      var data = await res.json();
+      if (data.status === 'ok') {
+        closeTxnEdit();
+        window.location.reload();
+      } else {
+        errEl.textContent = data.error || 'Failed to update.';
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = scope === 'single' ? 'Save for this transaction only' : 'Save for all similar transactions';
+      }
+    } catch(e) {
+      errEl.textContent = 'Network error: ' + e.message;
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = scope === 'single' ? 'Save for this transaction only' : 'Save for all similar transactions';
+    }
   }
 </script>
 {% endblock %}

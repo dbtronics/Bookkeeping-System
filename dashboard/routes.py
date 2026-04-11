@@ -107,7 +107,10 @@ def dashboard_overview():
 def dashboard_business():
     month = request.args.get("month")
     data = get_business(month_filter=month)
-    return render_template("business.html", **data)
+    return render_template("business.html",
+                           business_categories=BUSINESS_CATEGORIES,
+                           personal_categories=PERSONAL_CATEGORIES,
+                           **data)
 
 
 @dashboard_bp.route("/personal")
@@ -115,7 +118,10 @@ def dashboard_business():
 def dashboard_personal():
     month = request.args.get("month")
     data = get_personal(month_filter=month)
-    return render_template("personal.html", **data)
+    return render_template("personal.html",
+                           business_categories=BUSINESS_CATEGORIES,
+                           personal_categories=PERSONAL_CATEGORIES,
+                           **data)
 
 
 @dashboard_bp.route("/flagged")
@@ -580,4 +586,98 @@ def rules_delete():
         return jsonify({"status": "ok"})
     except Exception as e:
         log.error("Rule delete failed: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Transaction inline edit
+# ---------------------------------------------------------------------------
+
+@dashboard_bp.route("/transactions/update", methods=["POST"])
+@login_required
+def transactions_update():
+    """Edit category/subcategory for one or all similar transactions.
+
+    Request: {
+      transaction_id, category, subcategory,
+      scope: "single" | "all",
+      vendor_name: <cleaned vendor string used for 'all similar' matching>,
+      account_type,
+      create_rule: bool
+    }
+    Response: { status, updated, rule_id }
+    """
+    import csv as csv_mod, shutil
+    from csv_utils import TRANSACTION_HEADERS
+
+    data         = request.get_json(silent=True) or {}
+    txn_id       = data.get("transaction_id", "").strip()
+    category     = data.get("category", "").strip()
+    subcategory  = data.get("subcategory", "").strip()
+    scope        = data.get("scope", "single")
+    vendor_name  = (data.get("vendor_name") or "").strip()
+    account_type = data.get("account_type", "").strip()
+    create_rule  = bool(data.get("create_rule", False))
+
+    if not txn_id or not category:
+        return jsonify({"error": "Missing transaction_id or category"}), 400
+
+    path = Path(MASTER_TRANSACTIONS_CSV)
+    if not path.exists():
+        return jsonify({"error": "master_transactions.csv not found"}), 500
+
+    try:
+        with open(path, newline="", encoding="utf-8") as f:
+            rows = list(csv_mod.DictReader(f))
+
+        updated = 0
+        for row in rows:
+            is_target = row.get("transaction_id") == txn_id
+            if scope == "all":
+                vn_match  = vendor_name and (
+                    row.get("vendor_name", "").lower() == vendor_name.lower()
+                )
+                acct_match = not account_type or row.get("account_type") == account_type
+                matches = is_target or (vn_match and acct_match)
+            else:
+                matches = is_target
+
+            if matches:
+                row["category"]       = category
+                row["subcategory"]    = subcategory
+                row["categorized_by"] = "manual"
+                row["flagged"]        = "False"
+                row["flag_reason"]    = ""
+                updated += 1
+
+        tmp = path.with_suffix(".tmp")
+        with open(tmp, "w", newline="", encoding="utf-8") as f:
+            writer = csv_mod.DictWriter(f, fieldnames=TRANSACTION_HEADERS, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(rows)
+        shutil.move(str(tmp), str(path))
+
+        rule_id = None
+        if create_rule and vendor_name:
+            keyword = vendor_name.lower()
+            rule_data = {
+                "description": f"{vendor_name} → {category}" + (f" / {subcategory}" if subcategory else ""),
+                "match": {
+                    "vendor_name_contains": keyword,
+                    **({"account_type": account_type} if account_type else {}),
+                },
+                "apply": {
+                    "category": category,
+                    **({"subcategory": subcategory} if subcategory else {}),
+                    "exclude_from_pnl": False,
+                },
+            }
+            new_rule = _write_rule_to_json(rule_data)
+            rule_id  = new_rule["id"]
+
+        log.info("Transaction edit: scope=%s updated=%d rule=%s", scope, updated, rule_id)
+        return jsonify({"status": "ok", "updated": updated, "rule_id": rule_id})
+
+    except Exception as e:
+        log.error("Transaction update failed: %s", e)
         return jsonify({"error": str(e)}), 500
