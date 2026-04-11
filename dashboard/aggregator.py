@@ -234,7 +234,7 @@ def _sort_dict(d, top=None):
     return [(k, round(v, 2)) for k, v in items]
 
 
-def detect_passthrough_pairs(rows, tolerance=1.00, window_days=5):
+def detect_passthrough_pairs(rows, tolerance=None, window_days=None):
     """Find (incoming, outgoing) personal transaction pairs where amounts match
     within `tolerance` and dates are within `window_days` of each other.
 
@@ -245,6 +245,9 @@ def detect_passthrough_pairs(rows, tolerance=1.00, window_days=5):
     smallest time-then-amount distance. Each row appears in at most one pair.
     """
     from datetime import datetime
+    from config import PASSTHROUGH_TOLERANCE, PASSTHROUGH_WINDOW_DAYS
+    if tolerance   is None: tolerance   = PASSTHROUGH_TOLERANCE
+    if window_days is None: window_days = PASSTHROUGH_WINDOW_DAYS
 
     candidates = [
         r for r in rows

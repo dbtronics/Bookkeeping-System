@@ -13,6 +13,7 @@ from config import (
     ANTHROPIC_API_KEY, HAIKU_MODEL, SONNET_MODEL,
     NL_MODELS, NL_DEFAULT_MODEL, NL_MODEL_PRICING, USD_TO_CAD,
     BUSINESS_CATEGORIES, PERSONAL_CATEGORIES,
+    PASSTHROUGH_TOLERANCE, PASSTHROUGH_WINDOW_DAYS,
 )
 from dashboard.aggregator import get_overview, get_business, get_personal, get_flagged, detect_passthrough_pairs
 
@@ -701,8 +702,8 @@ def passthrough_scan():
     from config import MASTER_TRANSACTIONS_CSV
 
     data        = request.get_json(silent=True) or {}
-    tolerance   = float(data.get("tolerance",   1.00))
-    window_days = int(data.get("window_days",   5))
+    tolerance   = float(data.get("tolerance",   PASSTHROUGH_TOLERANCE))
+    window_days = int(data.get("window_days",   PASSTHROUGH_WINDOW_DAYS))
 
     path = Path(MASTER_TRANSACTIONS_CSV)
     if not path.exists():

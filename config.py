@@ -40,6 +40,16 @@ SONNET_MODEL      = "claude-sonnet-4-6"            # query/nl.py (optional upgra
 CONFIDENCE_THRESHOLD = float(os.environ.get("CONFIDENCE_THRESHOLD", 0.7))
 RULE_SUGGESTION_MIN  = 2   # categorizer.py → suggest_rules()
 
+# Pass-through detection thresholds
+# PASSTHROUGH_TOLERANCE  : max dollar difference between IN and OUT amounts to
+#                          be considered a pass-through pair (default $1.00)
+# PASSTHROUGH_WINDOW_DAYS: max calendar days between the IN and OUT transactions
+#                          (default 5 days)
+# Used by: dashboard/aggregator.py → detect_passthrough_pairs()
+#          dashboard/routes.py → /passthrough/scan
+PASSTHROUGH_TOLERANCE   = float(os.environ.get("PASSTHROUGH_TOLERANCE",   1.00))
+PASSTHROUGH_WINDOW_DAYS = int(os.environ.get("PASSTHROUGH_WINDOW_DAYS",   5))
+
 
 # =============================================================================
 # MODEL PRICING — USD per 1 million tokens
