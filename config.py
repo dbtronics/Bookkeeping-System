@@ -144,6 +144,7 @@ BUSINESS_CATEGORIES = [
     "Office supplies",
     "Professional services",
     "Credit card payment",
+    "Pass-through",
     "Uncategorized",
 ]
 
@@ -157,8 +158,14 @@ PERSONAL_CATEGORIES = [
     "Healthcare",
     "Transport",
     "Credit card payment",
+    "Pass-through",
     "Uncategorized",
 ]
+
+# Categories that automatically imply exclude_from_pnl=True
+# When a transaction is manually set to one of these, it is excluded from all
+# P&L totals regardless of what exclude_from_pnl was set to before.
+EXCLUDE_FROM_PNL_CATEGORIES = {"Pass-through", "Credit card payment"}
 
 ALL_CATEGORIES = {
     "business": BUSINESS_CATEGORIES,

@@ -14,6 +14,7 @@ from config import (
     NL_MODELS, NL_DEFAULT_MODEL, NL_MODEL_PRICING, USD_TO_CAD,
     BUSINESS_CATEGORIES, PERSONAL_CATEGORIES,
     PASSTHROUGH_TOLERANCE, PASSTHROUGH_WINDOW_DAYS,
+    EXCLUDE_FROM_PNL_CATEGORIES,
 )
 from dashboard.aggregator import get_overview, get_business, get_personal, get_flagged, detect_passthrough_pairs
 
@@ -661,6 +662,9 @@ def transactions_update():
                 row["categorized_by"] = "rule" if (scope == "all" and create_rule) else "manual"
                 row["flagged"]        = "False"
                 row["flag_reason"]    = ""
+                # Some categories always imply exclusion from P&L
+                if category in EXCLUDE_FROM_PNL_CATEGORIES:
+                    row["exclude_from_pnl"] = "True"
                 updated += 1
 
         tmp = path.with_suffix(".tmp")
