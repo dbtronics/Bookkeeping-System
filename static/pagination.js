@@ -44,6 +44,10 @@ function initPagination(tableId, opts) {
 
   container.insertBefore(bar, scrollWrap);
 
+  // Sync the select element to the actual default page size
+  var sizeElInit = bar.querySelector('.pag-size-select');
+  sizeElInit.value = defaultSize === Infinity ? 'all' : String(defaultSize);
+
   // ---- Inject page nav below .table-scroll --------------------------
   var nav = document.createElement('div');
   nav.className = 'pag-nav';

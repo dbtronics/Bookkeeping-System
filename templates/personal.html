@@ -33,14 +33,29 @@
     <div class="accordion-body">
       {% if income_by_source %}
       <div class="bar-list">
-        {% set max_inc = income_by_source[0][1] if income_by_source else 1 %}
-        {% for source, amt in income_by_source %}
-        <div class="bar-item">
-          <div class="bar-label">{{ source }}</div>
-          <div class="bar-track">
-            <div class="bar-fill purple" style="width: {{ [(amt / max_inc * 100)|round|int, 100]|min }}%"></div>
+        {% set max_inc = income_by_source[0].amount if income_by_source else 1 %}
+        {% for item in income_by_source %}
+        <div class="bar-entry">
+          <div class="bar-item bar-item--clickable" onclick="toggleBarDrilldown(this)">
+            <div class="bar-label"><span class="bar-expand-icon">&#9656;</span> {{ item.key }}</div>
+            <div class="bar-track">
+              <div class="bar-fill purple" style="width: {{ [(item.amount / max_inc * 100)|round|int, 100]|min }}%"></div>
+            </div>
+            <div class="bar-value">${{ "{:,.2f}".format(item.amount) }}</div>
           </div>
-          <div class="bar-value">${{ "{:,.2f}".format(amt) }}</div>
+          {% if item.transactions %}
+          <div class="bar-drilldown">
+            {% for t in item.transactions %}
+            {% set td = {"id": t.id, "date": t.date, "vendor": t.vendor, "amount": t.amount, "account": t.account_type, "cat": t.category, "subcat": t.subcategory} %}
+            <div class="bar-drill-row">
+              <span class="mono muted">{{ t.date }}</span>
+              <span class="bar-drill-vendor" title="{{ t.description }}">{{ t.display or t.vendor or t.description }}</span>
+              <span class="mono positive">+${{ "{:,.2f}".format(t.amount|abs) }}</span>
+              <button class="btn-txn-edit" data-txn='{{ td | tojson }}' onclick="openTxnEdit(this)" title="Edit">&#9998;</button>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
         </div>
         {% endfor %}
       </div>
@@ -58,14 +73,29 @@
     <div class="accordion-body">
       {% if expenses_by_category %}
       <div class="bar-list">
-        {% set max_exp = expenses_by_category[0][1] if expenses_by_category else 1 %}
-        {% for cat, amt in expenses_by_category %}
-        <div class="bar-item">
-          <div class="bar-label">{{ cat }}</div>
-          <div class="bar-track">
-            <div class="bar-fill red" style="width: {{ [(amt / max_exp * 100)|round|int, 100]|min }}%"></div>
+        {% set max_exp = expenses_by_category[0].amount if expenses_by_category else 1 %}
+        {% for item in expenses_by_category %}
+        <div class="bar-entry">
+          <div class="bar-item bar-item--clickable" onclick="toggleBarDrilldown(this)">
+            <div class="bar-label"><span class="bar-expand-icon">&#9656;</span> {{ item.key }}</div>
+            <div class="bar-track">
+              <div class="bar-fill red" style="width: {{ [(item.amount / max_exp * 100)|round|int, 100]|min }}%"></div>
+            </div>
+            <div class="bar-value">${{ "{:,.2f}".format(item.amount) }}</div>
           </div>
-          <div class="bar-value">${{ "{:,.2f}".format(amt) }}</div>
+          {% if item.transactions %}
+          <div class="bar-drilldown">
+            {% for t in item.transactions %}
+            {% set td = {"id": t.id, "date": t.date, "vendor": t.vendor, "amount": t.amount, "account": t.account_type, "cat": t.category, "subcat": t.subcategory} %}
+            <div class="bar-drill-row">
+              <span class="mono muted">{{ t.date }}</span>
+              <span class="bar-drill-vendor" title="{{ t.description }}">{{ t.display or t.vendor or t.description }}</span>
+              <span class="mono negative">−${{ "{:,.2f}".format(t.amount|abs) }}</span>
+              <button class="btn-txn-edit" data-txn='{{ td | tojson }}' onclick="openTxnEdit(this)" title="Edit">&#9998;</button>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
         </div>
         {% endfor %}
       </div>
@@ -85,14 +115,29 @@
   </div>
   <div class="accordion-body">
     <div class="bar-list">
-      {% set max_v = expenses_by_vendor[0][1] if expenses_by_vendor else 1 %}
-      {% for vendor, amt in expenses_by_vendor %}
-      <div class="bar-item">
-        <div class="bar-label">{{ vendor }}</div>
-        <div class="bar-track">
-          <div class="bar-fill red" style="width: {{ [(amt / max_v * 100)|round|int, 100]|min }}%"></div>
+      {% set max_v = expenses_by_vendor[0].amount if expenses_by_vendor else 1 %}
+      {% for item in expenses_by_vendor %}
+      <div class="bar-entry">
+        <div class="bar-item bar-item--clickable" onclick="toggleBarDrilldown(this)">
+          <div class="bar-label"><span class="bar-expand-icon">&#9656;</span> {{ item.key }}</div>
+          <div class="bar-track">
+            <div class="bar-fill red" style="width: {{ [(item.amount / max_v * 100)|round|int, 100]|min }}%"></div>
+          </div>
+          <div class="bar-value">${{ "{:,.2f}".format(item.amount) }}</div>
         </div>
-        <div class="bar-value">${{ "{:,.2f}".format(amt) }}</div>
+        {% if item.transactions %}
+        <div class="bar-drilldown">
+          {% for t in item.transactions %}
+          {% set td = {"id": t.id, "date": t.date, "vendor": t.vendor, "amount": t.amount, "account": t.account_type, "cat": t.category, "subcat": t.subcategory} %}
+          <div class="bar-drill-row">
+            <span class="mono muted">{{ t.date }}</span>
+            <span class="bar-drill-vendor" title="{{ t.description }}">{{ t.display or t.vendor or t.description }}</span>
+            <span class="mono negative">−${{ "{:,.2f}".format(t.amount|abs) }}</span>
+            <button class="btn-txn-edit" data-txn='{{ td | tojson }}' onclick="openTxnEdit(this)" title="Edit">&#9998;</button>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
       </div>
       {% endfor %}
     </div>
@@ -269,6 +314,10 @@
   function toggleAccordion(header) {
     var card = header.closest('.accordion-card');
     card.classList.toggle('card--collapsed');
+  }
+
+  function toggleBarDrilldown(barItem) {
+    barItem.closest('.bar-entry').classList.toggle('bar-entry--open');
   }
 
   function setView(view) {

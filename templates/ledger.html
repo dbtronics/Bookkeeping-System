@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+{% block title %}Ledger — Bookkeeping{% endblock %}
+{% block mobile_title %}Ledger{% endblock %}
+{% block page_title %}Ledger{% endblock %}
+
+{% block content %}
+
+<!-- Filters bar -->
+<div class="ledger-filters">
+  <form method="get" action="{{ url_for('dashboard.dashboard_ledger') }}" class="ledger-filter-form">
+    <!-- Preserve month if set -->
+    {% if selected_month and selected_month != 'all' %}
+    <input type="hidden" name="month" value="{{ selected_month }}">
+    {% endif %}
+
+    <input type="text" name="q" value="{{ search }}" placeholder="Search description, vendor, category…" class="ledger-search">
+
+    <select name="account" class="month-select" onchange="this.form.submit()">
+      <option value="" {% if not account_filter %}selected{% endif %}>All accounts</option>
+      <option value="business" {% if account_filter == 'business' %}selected{% endif %}>Business</option>
+      <option value="personal" {% if account_filter == 'personal' %}selected{% endif %}>Personal</option>
+    </select>
+
+    <button type="submit" class="btn btn-sm btn-approve">Search</button>
+    {% if search or account_filter %}
+    <a href="{{ url_for('dashboard.dashboard_ledger') }}" class="btn btn-sm btn-dismiss">Clear</a>
+    {% endif %}
+  </form>
+
+  <span class="ledger-count muted">{{ total_count }} transaction{{ 's' if total_count != 1 else '' }}</span>
+</div>
+
+<!-- Transaction table -->
+<div class="card" style="padding:0;">
+  <div class="table-scroll">
+    <table class="txn-table" id="ledger-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Description</th>
+          <th>Vendor</th>
+          <th>Amount</th>
+          <th>Account</th>
+          <th>Bank</th>
+          <th>Category</th>
+          <th>Subcategory</th>
+          <th>By</th>
+          <th>P&amp;L</th>
+          <th>Flag</th>
+          <th style="width:36px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in transactions %}
+        {% set amt = t.amount | float %}
+        <tr>
+          <td class="mono muted" style="white-space:nowrap;">{{ t.date }}</td>
+          <td class="desc-cell" title="{{ t.description }}">{{ t.description }}</td>
+          <td>{{ t.vendor_name or '—' }}</td>
+          <td class="mono {% if amt >= 0 %}positive{% else %}negative{% endif %}" style="white-space:nowrap;">
+            {% if amt >= 0 %}+{% else %}−{% endif %}${{ "{:,.2f}".format(amt|abs) }}
+          </td>
+          <td>
+            <span class="pill {% if t.account_type == 'business' %}teal{% else %}purple{% endif %}">
+              {{ t.account_type }}
+            </span>
+          </td>
+          <td class="muted">{{ t.bank_name or '—' }}</td>
+          <td>{{ t.category or '—' }}</td>
+          <td class="muted">{{ t.subcategory or '—' }}</td>
+          <td>
+            {% if t.categorized_by == 'rule' %}
+              <span class="pill grey" title="Matched a rule">rule</span>
+            {% elif t.categorized_by == 'ai' %}
+              <span class="pill grey" title="AI categorized">ai</span>
+            {% elif t.categorized_by == 'manual' %}
+              <span class="pill grey" title="Manually set">manual</span>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if t.exclude_from_pnl | lower == 'true' %}
+              <span class="pill grey">excl.</span>
+            {% else %}
+              <span class="pill teal">incl.</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if t.flagged | lower == 'true' %}
+              <span class="flag-dot" title="{{ t.flag_reason or 'Flagged' }}">⚑</span>
+            {% endif %}
+          </td>
+          <td>
+            {% set txn_data = {
+              "id": t.transaction_id,
+              "date": t.date,
+              "vendor": t.vendor_name or t.description,
+              "description": t.description,
+              "amount": amt,
+              "account_type": t.account_type,
+              "category": t.category,
+              "subcategory": t.subcategory or ""
+            } %}
+            <button class="btn-txn-edit btn-txn-edit-table"
+                    data-txn='{{ txn_data | tojson }}'
+                    onclick="openTxnEdit(this)"
+                    title="Edit">&#9998;</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="12" class="empty">No transactions found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Transaction edit modal (same as business/personal pages) -->
+<div id="txnEditOverlay" class="recat-overlay" style="display:none;">
+  <div class="recat-modal" style="width:460px;max-width:95vw;">
+
+    <!-- Edit form -->
+    <div id="txnEditForm">
+      <h3 style="margin-bottom:4px;" id="txnEditVendor"></h3>
+      <div class="muted" style="font-size:13px;margin-bottom:16px;" id="txnEditMeta"></div>
+
+      <div class="edit-rule-field">
+        <label>Category</label>
+        <select id="txnCategory" class="edit-rule-input" onchange="onTxnCategoryChange()">
+          <optgroup label="Business">
+            {% for c in business_categories %}
+            <option value="{{ c }}">{{ c }}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Personal">
+            {% for c in personal_categories %}
+            <option value="{{ c }}">{{ c }}</option>
+            {% endfor %}
+          </optgroup>
+        </select>
+      </div>
+      <div class="edit-rule-field">
+        <label>Subcategory <span class="muted">(optional)</span></label>
+        <input type="text" id="txnSubcategory" class="edit-rule-input">
+      </div>
+
+      <div id="txnScopeWrap" style="margin:14px 0 0;">
+        <p style="font-size:13px;margin-bottom:10px;text-align:left;" id="txnScopeQuestion"></p>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;text-align:left;">
+            <input type="radio" name="txnScope" value="single" checked style="margin-top:3px;flex-shrink:0;">
+            <span style="font-size:13px;"><strong>This transaction only</strong></span>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;text-align:left;">
+            <input type="radio" name="txnScope" value="all" style="margin-top:3px;flex-shrink:0;">
+            <span style="font-size:13px;"><strong>All similar</strong> — every transaction from this vendor</span>
+          </label>
+        </div>
+        <div id="txnRuleWrap" style="display:none;margin-top:12px;padding:10px 12px;background:var(--bg);border-radius:8px;border:1px solid var(--border);text-align:left;">
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+            <input type="checkbox" id="txnCreateRule" style="margin-top:3px;flex-shrink:0;">
+            <span style="font-size:13px;"><strong>Also create a rule</strong> — auto-apply this category to future imports</span>
+          </label>
+        </div>
+      </div>
+
+      <div id="txnEditError" style="color:var(--red);font-size:13px;margin-top:8px;display:none;"></div>
+
+      <div style="display:flex;gap:12px;margin-top:20px;">
+        <button class="btn btn-approve" style="flex:1;" onclick="saveTxnEdit()">Save</button>
+        <button class="btn btn-dismiss" style="flex:1;" onclick="closeTxnEdit()">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Result state -->
+    <div id="txnEditResult" style="display:none;">
+      <h3>Updated ✓</h3>
+      <div id="txnEditResultMsg" class="recat-stats" style="margin:16px 0;"></div>
+      <button class="btn btn-approve" style="width:100%;" onclick="closeTxnEditAndReload()">OK</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='pagination.js') }}"></script>
+<script>
+  initPagination('ledger-table', { defaultPageSize: 50 });
+
+  // ── Transaction edit (same logic as business/personal pages) ────────────
+  var _txnEditData = {};
+
+  function openTxnEdit(btn) {
+    _txnEditData = JSON.parse(btn.dataset.txn);
+    document.getElementById('txnEditVendor').textContent = _txnEditData.vendor || _txnEditData.description;
+    document.getElementById('txnEditMeta').textContent =
+      _txnEditData.date + ' · ' +
+      (_txnEditData.amount >= 0 ? '+' : '−') + '$' + Math.abs(_txnEditData.amount).toLocaleString('en-CA', {minimumFractionDigits:2}) +
+      ' · ' + (_txnEditData.account_type || '');
+    document.getElementById('txnCategory').value    = _txnEditData.category    || '';
+    document.getElementById('txnSubcategory').value = _txnEditData.subcategory || '';
+    document.querySelector('input[name="txnScope"][value="single"]').checked = true;
+    document.getElementById('txnRuleWrap').style.display = 'none';
+    document.getElementById('txnCreateRule').checked = false;
+    document.getElementById('txnEditError').style.display = 'none';
+
+    var vendor = _txnEditData.vendor || _txnEditData.description || '';
+    document.getElementById('txnScopeQuestion').textContent =
+      'Apply to: just this transaction, or all transactions from "' + vendor + '"?';
+
+    document.getElementById('txnEditForm').style.display   = 'block';
+    document.getElementById('txnEditResult').style.display = 'none';
+    document.getElementById('txnEditOverlay').style.display = 'flex';
+  }
+
+  function onTxnCategoryChange() {}
+
+  document.querySelectorAll('input[name="txnScope"]').forEach(function(r) {
+    r.addEventListener('change', function() {
+      document.getElementById('txnRuleWrap').style.display =
+        r.value === 'all' ? 'block' : 'none';
+    });
+  });
+
+  function closeTxnEdit() {
+    document.getElementById('txnEditOverlay').style.display = 'none';
+  }
+
+  function closeTxnEditAndReload() {
+    closeTxnEdit();
+    window.location.reload();
+  }
+
+  async function saveTxnEdit() {
+    var errEl  = document.getElementById('txnEditError');
+    errEl.style.display = 'none';
+    var cat    = document.getElementById('txnCategory').value;
+    var subcat = document.getElementById('txnSubcategory').value.trim();
+    var scope  = document.querySelector('input[name="txnScope"]:checked').value;
+    var createRule = scope === 'all' && document.getElementById('txnCreateRule').checked;
+    if (!cat) { errEl.textContent = 'Please select a category.'; errEl.style.display = 'block'; return; }
+
+    var saveBtn = document.querySelector('#txnEditForm .btn-approve');
+    saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+
+    try {
+      var res = await fetch('/transactions/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transaction_id: _txnEditData.id,
+          category:       cat,
+          subcategory:    subcat,
+          scope:          scope,
+          vendor_name:    _txnEditData.vendor,
+          account_type:   _txnEditData.account_type,
+          create_rule:    createRule,
+        }),
+      });
+      var data = await res.json();
+      if (data.status === 'ok') {
+        var msg = '<div class="recat-result-row"><span>Transactions updated</span><strong>' + (data.updated || 0) + '</strong></div>';
+        if (scope === 'all') msg += '<div class="recat-result-row"><span>Matched vendor</span><strong>' + (_txnEditData.vendor || '—') + '</strong></div>';
+        if (data.rule_id)   msg += '<div class="recat-result-row"><span>Rule created</span><strong>' + data.rule_id + '</strong></div>';
+        document.getElementById('txnEditResultMsg').innerHTML = msg;
+        document.getElementById('txnEditForm').style.display   = 'none';
+        document.getElementById('txnEditResult').style.display = 'block';
+      } else {
+        errEl.textContent = data.error || 'Failed to save.';
+        errEl.style.display = 'block';
+        saveBtn.disabled = false; saveBtn.textContent = 'Save';
+      }
+    } catch (e) {
+      errEl.textContent = 'Network error: ' + e.message;
+      errEl.style.display = 'block';
+      saveBtn.disabled = false; saveBtn.textContent = 'Save';
+    }
+  }
+</script>
+{% endblock %}

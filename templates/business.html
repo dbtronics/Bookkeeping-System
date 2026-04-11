@@ -33,14 +33,29 @@
     <div class="accordion-body">
       {% if revenue_by_vendor %}
       <div class="bar-list">
-        {% set max_rev = revenue_by_vendor[0][1] if revenue_by_vendor else 1 %}
-        {% for vendor, amt in revenue_by_vendor %}
-        <div class="bar-item">
-          <div class="bar-label">{{ vendor }}</div>
-          <div class="bar-track">
-            <div class="bar-fill teal" style="width: {{ [(amt / max_rev * 100)|round|int, 100]|min }}%"></div>
+        {% set max_rev = revenue_by_vendor[0].amount if revenue_by_vendor else 1 %}
+        {% for item in revenue_by_vendor %}
+        <div class="bar-entry">
+          <div class="bar-item bar-item--clickable" onclick="toggleBarDrilldown(this)">
+            <div class="bar-label"><span class="bar-expand-icon">&#9656;</span> {{ item.key }}</div>
+            <div class="bar-track">
+              <div class="bar-fill teal" style="width: {{ [(item.amount / max_rev * 100)|round|int, 100]|min }}%"></div>
+            </div>
+            <div class="bar-value">${{ "{:,.2f}".format(item.amount) }}</div>
           </div>
-          <div class="bar-value">${{ "{:,.2f}".format(amt) }}</div>
+          {% if item.transactions %}
+          <div class="bar-drilldown">
+            {% for t in item.transactions %}
+            {% set td = {"id": t.id, "date": t.date, "vendor": t.vendor, "amount": t.amount, "account": t.account_type, "cat": t.category, "subcat": t.subcategory} %}
+            <div class="bar-drill-row">
+              <span class="mono muted">{{ t.date }}</span>
+              <span class="bar-drill-vendor" title="{{ t.description }}">{{ t.display or t.vendor or t.description }}</span>
+              <span class="mono positive">+${{ "{:,.2f}".format(t.amount|abs) }}</span>
+              <button class="btn-txn-edit" data-txn='{{ td | tojson }}' onclick="openTxnEdit(this)" title="Edit">&#9998;</button>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
         </div>
         {% endfor %}
       </div>
@@ -58,14 +73,29 @@
     <div class="accordion-body">
       {% if expenses_by_category %}
       <div class="bar-list">
-        {% set max_exp = expenses_by_category[0][1] if expenses_by_category else 1 %}
-        {% for cat, amt in expenses_by_category %}
-        <div class="bar-item">
-          <div class="bar-label">{{ cat }}</div>
-          <div class="bar-track">
-            <div class="bar-fill red" style="width: {{ [(amt / max_exp * 100)|round|int, 100]|min }}%"></div>
+        {% set max_exp = expenses_by_category[0].amount if expenses_by_category else 1 %}
+        {% for item in expenses_by_category %}
+        <div class="bar-entry">
+          <div class="bar-item bar-item--clickable" onclick="toggleBarDrilldown(this)">
+            <div class="bar-label"><span class="bar-expand-icon">&#9656;</span> {{ item.key }}</div>
+            <div class="bar-track">
+              <div class="bar-fill red" style="width: {{ [(item.amount / max_exp * 100)|round|int, 100]|min }}%"></div>
+            </div>
+            <div class="bar-value">${{ "{:,.2f}".format(item.amount) }}</div>
           </div>
-          <div class="bar-value">${{ "{:,.2f}".format(amt) }}</div>
+          {% if item.transactions %}
+          <div class="bar-drilldown">
+            {% for t in item.transactions %}
+            {% set td = {"id": t.id, "date": t.date, "vendor": t.vendor, "amount": t.amount, "account": t.account_type, "cat": t.category, "subcat": t.subcategory} %}
+            <div class="bar-drill-row">
+              <span class="mono muted">{{ t.date }}</span>
+              <span class="bar-drill-vendor" title="{{ t.description }}">{{ t.display or t.vendor or t.description }}</span>
+              <span class="mono negative">−${{ "{:,.2f}".format(t.amount|abs) }}</span>
+              <button class="btn-txn-edit" data-txn='{{ td | tojson }}' onclick="openTxnEdit(this)" title="Edit">&#9998;</button>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
         </div>
         {% endfor %}
       </div>
@@ -85,14 +115,29 @@
   </div>
   <div class="accordion-body">
     <div class="bar-list">
-      {% set max_v = expenses_by_vendor[0][1] if expenses_by_vendor else 1 %}
-      {% for vendor, amt in expenses_by_vendor %}
-      <div class="bar-item">
-        <div class="bar-label">{{ vendor }}</div>
-        <div class="bar-track">
-          <div class="bar-fill red" style="width: {{ [(amt / max_v * 100)|round|int, 100]|min }}%"></div>
+      {% set max_v = expenses_by_vendor[0].amount if expenses_by_vendor else 1 %}
+      {% for item in expenses_by_vendor %}
+      <div class="bar-entry">
+        <div class="bar-item bar-item--clickable" onclick="toggleBarDrilldown(this)">
+          <div class="bar-label"><span class="bar-expand-icon">&#9656;</span> {{ item.key }}</div>
+          <div class="bar-track">
+            <div class="bar-fill red" style="width: {{ [(item.amount / max_v * 100)|round|int, 100]|min }}%"></div>
+          </div>
+          <div class="bar-value">${{ "{:,.2f}".format(item.amount) }}</div>
         </div>
-        <div class="bar-value">${{ "{:,.2f}".format(amt) }}</div>
+        {% if item.transactions %}
+        <div class="bar-drilldown">
+          {% for t in item.transactions %}
+          {% set td = {"id": t.id, "date": t.date, "vendor": t.vendor, "amount": t.amount, "account": t.account_type, "cat": t.category, "subcat": t.subcategory} %}
+          <div class="bar-drill-row">
+            <span class="mono muted">{{ t.date }}</span>
+            <span class="bar-drill-vendor" title="{{ t.description }}">{{ t.display or t.vendor or t.description }}</span>
+            <span class="mono negative">−${{ "{:,.2f}".format(t.amount|abs) }}</span>
+            <button class="btn-txn-edit" data-txn='{{ td | tojson }}' onclick="openTxnEdit(this)" title="Edit">&#9998;</button>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
       </div>
       {% endfor %}
     </div>
@@ -121,10 +166,12 @@
             <th>Category</th>
             <th>By</th>
             <th class="num">Amount</th>
+            <th style="width:36px;"></th>
           </tr>
         </thead>
         <tbody>
           {% for t in transactions %}
+          {% set txn_data = {"id": t.transaction_id, "date": t.date, "vendor": t.vendor_name or t.description, "desc": t.description, "amount": t.amount|float, "account": t.account_type, "cat": t.category, "subcat": t.subcategory} %}
           <tr class="{% if t.flagged == 'True' %}row-flagged{% endif %} {% if t.exclude_from_pnl == 'True' %}row-excluded{% endif %}">
             <td class="mono">{{ t.date }}</td>
             <td class="desc-cell">
@@ -137,9 +184,12 @@
             <td class="num mono {% if t.amount|float >= 0 %}positive{% else %}negative{% endif %}">
               {% if t.amount|float >= 0 %}+{% endif %}${{ "{:,.2f}".format(t.amount|float|abs) }}
             </td>
+            <td>
+              <button class="btn-txn-edit btn-txn-edit-table" data-txn='{{ txn_data | tojson }}' onclick="openTxnEdit(this)" title="Edit category">&#9998;</button>
+            </td>
           </tr>
           {% else %}
-          <tr><td colspan="5" class="empty">No transactions.</td></tr>
+          <tr><td colspan="6" class="empty">No transactions.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -238,11 +288,20 @@
 
     <div id="te-error" style="color:var(--red);font-size:13px;margin-top:8px;display:none;"></div>
 
-    <p class="muted" style="font-size:12px;margin-top:14px;margin-bottom:8px;">How should this change be applied?</p>
-    <div style="display:flex;flex-direction:column;gap:8px;">
-      <button class="btn btn-approve" style="width:100%;" id="te-btn-single" onclick="saveTxnEdit('single')">Save for this transaction only</button>
-      <button class="btn btn-approve" style="width:100%;background:var(--blue);border-color:var(--blue);" id="te-btn-all" onclick="saveTxnEdit('all')">Save for all similar transactions</button>
-      <button class="btn btn-dismiss" style="width:100%;" onclick="closeTxnEdit()">Cancel</button>
+    <!-- Edit form actions -->
+    <div id="te-form-actions">
+      <p class="muted" style="font-size:12px;margin-top:14px;margin-bottom:8px;">How should this change be applied?</p>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn btn-approve" style="width:100%;" id="te-btn-single" onclick="saveTxnEdit('single')">Save for this transaction only</button>
+        <button class="btn btn-approve" style="width:100%;background:var(--blue);border-color:var(--blue);" id="te-btn-all" onclick="saveTxnEdit('all')">Save for all similar transactions</button>
+        <button class="btn btn-dismiss" style="width:100%;" onclick="closeTxnEdit()">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Result state (shown after save) -->
+    <div id="te-result" style="display:none;margin-top:16px;">
+      <div id="te-result-msg" class="recat-stats" style="margin-bottom:16px;"></div>
+      <button class="btn btn-approve" style="width:100%;" onclick="closeTxnEditAndReload()">OK</button>
     </div>
   </div>
 </div>
@@ -257,6 +316,10 @@
   function toggleAccordion(header) {
     var card = header.closest('.accordion-card');
     card.classList.toggle('card--collapsed');
+  }
+
+  function toggleBarDrilldown(barItem) {
+    barItem.closest('.bar-entry').classList.toggle('bar-entry--open');
   }
 
   function setView(view) {
@@ -289,11 +352,14 @@
   var _editTxn = null;
 
   function openTxnEdit(btn) {
-    _editTxn = JSON.parse(btn.closest('.cat-txn-row').dataset.txn);
+    var row  = btn.closest('.cat-txn-row') || btn.closest('tr');
+    _editTxn = JSON.parse(btn.dataset.txn);
     document.getElementById('te-category').value    = _editTxn.cat || '';
     document.getElementById('te-subcategory').value = _editTxn.subcat || '';
     document.getElementById('te-make-rule').checked = false;
-    document.getElementById('te-error').style.display = 'none';
+    document.getElementById('te-error').style.display  = 'none';
+    document.getElementById('te-form-actions').style.display = '';
+    document.getElementById('te-result').style.display = 'none';
     document.getElementById('te-info').innerHTML =
       '<strong>' + (_editTxn.vendor || '').replace(/</g,'&lt;') + '</strong>' +
       '<span class="muted" style="margin-left:10px;">' + _editTxn.date + '</span>' +
@@ -301,15 +367,22 @@
         (_editTxn.amount >= 0 ? 'positive' : 'negative') + '">' +
         (_editTxn.amount >= 0 ? '+' : '') + '$' + Math.abs(_editTxn.amount).toLocaleString('en-CA', {minimumFractionDigits:2}) +
       '</span>';
-    ['te-btn-single','te-btn-all'].forEach(function(id){ document.getElementById(id).disabled = false; });
-    document.getElementById('te-btn-single').textContent = 'Save for this transaction only';
-    document.getElementById('te-btn-all').textContent    = 'Save for all similar transactions';
+    ['te-btn-single','te-btn-all'].forEach(function(id){
+      var b = document.getElementById(id);
+      b.disabled = false;
+      b.textContent = id === 'te-btn-single' ? 'Save for this transaction only' : 'Save for all similar transactions';
+    });
     document.getElementById('txnEditOverlay').style.display = 'flex';
   }
 
   function closeTxnEdit() {
     document.getElementById('txnEditOverlay').style.display = 'none';
     _editTxn = null;
+  }
+
+  function closeTxnEditAndReload() {
+    closeTxnEdit();
+    window.location.reload();
   }
 
   async function saveTxnEdit(scope) {
@@ -342,8 +415,17 @@
       });
       var data = await res.json();
       if (data.status === 'ok') {
-        closeTxnEdit();
-        window.location.reload();
+        var n   = data.updated || 0;
+        var msg = '<div class="recat-result-row"><span>Transactions updated</span><strong>' + n + '</strong></div>';
+        if (scope === 'all')
+          msg += '<div class="recat-result-row"><span>Vendor matched</span><strong>' + (_editTxn.vendor || '—') + '</strong></div>';
+        if (data.rule_id)
+          msg += '<div class="recat-result-row"><span>Rule created</span><strong>' + data.rule_id + '</strong></div>';
+        var catBy = (makeRule && scope === 'all') ? 'rule' : 'manual';
+        msg += '<div class="recat-result-row"><span>Categorized by</span><strong>' + catBy + '</strong></div>';
+        document.getElementById('te-result-msg').innerHTML = msg;
+        document.getElementById('te-form-actions').style.display = 'none';
+        document.getElementById('te-result').style.display = '';
       } else {
         errEl.textContent = data.error || 'Failed to update.';
         errEl.style.display = 'block';

@@ -95,6 +95,37 @@
   </div>{# /accordion-body #}
 </div>{# /card #}
 
+<!-- Transfer Keywords -->
+<div class="card accordion-card">
+  <div class="card-header accordion-toggle" onclick="toggleAccordion(this)">
+    <h2>Internal transfer keywords</h2>
+    <span class="muted" style="margin-right:auto;">{{ transfer_keywords|length }} keyword{{ 's' if transfer_keywords|length != 1 else '' }} — used by supplemental income detector</span>
+    <span class="accordion-chevron">&#8250;</span>
+  </div>
+  <div class="accordion-body">
+    <p class="muted" style="margin-bottom:12px;">
+      Transactions whose description contains any of these keywords are treated as internal
+      account transfers (e.g. chequing → credit card). The supplemental income detector uses
+      these to separate real income from internal forwarding.
+    </p>
+    <div id="kw-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+      {% for kw in transfer_keywords %}
+      <span class="kw-pill" data-kw="{{ kw }}">
+        {{ kw }}
+        <button class="kw-remove" onclick="removeKeyword('{{ kw }}')" title="Remove">&#10005;</button>
+      </span>
+      {% else %}
+      <span class="muted" id="kw-empty">No keywords configured — defaults will be used (INTERNET TRANSFER, PAYMENT THANK YOU).</span>
+      {% endfor %}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <input type="text" id="kw-input" class="edit-rule-input" placeholder="e.g. ONLINE TRANSFER" style="max-width:280px;margin:0;">
+      <button class="btn btn-sm btn-approve" onclick="addKeyword()">+ Add</button>
+    </div>
+    <div id="kw-error" style="color:var(--red);font-size:13px;margin-top:6px;display:none;"></div>
+  </div>
+</div>
+
 <!-- NL rule creation chat — always at bottom -->
 <div class="card">
   <div class="card-header">
@@ -102,6 +133,19 @@
     <span class="badge-pill">AI</span>
   </div>
   <p class="muted" style="margin-bottom:12px;">Describe the rule you want — e.g. "Always categorize GoHighLevel as SaaS tools for business."</p>
+
+  <div class="rule-caution-box">
+    <span class="rule-caution-icon">&#9888;</span>
+    <div>
+      <strong>Don't create rules for context-dependent vendors.</strong>
+      Rules lock in a fixed category for every transaction from that vendor.
+      If the same person sometimes sends you pass-through money and sometimes genuine income
+      (e.g. Sobia Basit, Abdul Basit), <em>do not add a rule for them</em> —
+      let the pass-through scanner on the Overview page decide case by case.
+      Only create rules for vendors where the outcome is always the same
+      (e.g. GoHighLevel is always SaaS tools, Sharyn D Carlson is always Commission income).
+    </div>
+  </div>
   <div class="chat-window" id="rulesChat">
     <div class="chat-empty">Describe a rule and I'll help you write it…</div>
   </div>
@@ -544,6 +588,79 @@
       saveBtn.textContent = 'Save changes';
     }
   }
+
+  // ── Transfer keywords ───────────────────────────────────────────────────
+  async function addKeyword() {
+    var input = document.getElementById('kw-input');
+    var errEl = document.getElementById('kw-error');
+    var kw = input.value.trim().toUpperCase();
+    errEl.style.display = 'none';
+    if (!kw) { errEl.textContent = 'Please enter a keyword.'; errEl.style.display = 'block'; return; }
+    try {
+      var res = await fetch('/settings/transfer-keywords/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: kw }),
+      });
+      var data = await res.json();
+      if (data.status === 'ok') {
+        input.value = '';
+        renderKeywords(data.keywords);
+      } else {
+        errEl.textContent = data.error || 'Failed to add keyword.';
+        errEl.style.display = 'block';
+      }
+    } catch (e) {
+      errEl.textContent = 'Network error: ' + e.message;
+      errEl.style.display = 'block';
+    }
+  }
+
+  async function removeKeyword(kw) {
+    var errEl = document.getElementById('kw-error');
+    errEl.style.display = 'none';
+    try {
+      var res = await fetch('/settings/transfer-keywords/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: kw }),
+      });
+      var data = await res.json();
+      if (data.status === 'ok') {
+        renderKeywords(data.keywords);
+      } else {
+        errEl.textContent = data.error || 'Failed to remove keyword.';
+        errEl.style.display = 'block';
+      }
+    } catch (e) {
+      errEl.textContent = 'Network error: ' + e.message;
+      errEl.style.display = 'block';
+    }
+  }
+
+  function renderKeywords(keywords) {
+    var list = document.getElementById('kw-list');
+    list.innerHTML = '';
+    if (!keywords || keywords.length === 0) {
+      var span = document.createElement('span');
+      span.className = 'muted';
+      span.id = 'kw-empty';
+      span.textContent = 'No keywords configured — defaults will be used (INTERNET TRANSFER, PAYMENT THANK YOU).';
+      list.appendChild(span);
+      return;
+    }
+    keywords.forEach(function(kw) {
+      var span = document.createElement('span');
+      span.className = 'kw-pill';
+      span.dataset.kw = kw;
+      span.innerHTML = kw + ' <button class="kw-remove" onclick="removeKeyword(\'' + kw.replace(/'/g, "\\'") + '\')" title="Remove">&#10005;</button>';
+      list.appendChild(span);
+    });
+  }
+
+  document.getElementById('kw-input') && document.getElementById('kw-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); addKeyword(); }
+  });
 
   async function deleteRule(btn) {
     var ruleId = btn.dataset.id;

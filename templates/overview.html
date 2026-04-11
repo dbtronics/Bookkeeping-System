@@ -44,26 +44,27 @@
 
 <!-- Pass-through detection modal -->
 <div id="ptOverlay" class="recat-overlay" style="display:none;">
-  <div class="recat-modal" style="width:560px;max-width:95vw;">
+  <div class="recat-modal" style="width:600px;max-width:95vw;">
 
     <!-- Scanning state -->
     <div id="ptScanning">
-      <h3>Scanning for pass-throughs…</h3>
+      <h3>Scanning transactions…</h3>
       <div class="recat-spinner" style="margin:24px auto;"></div>
-      <p class="muted" style="text-align:center;font-size:13px;">Checking all transactions within ±$1 and 2 days</p>
+      <p class="muted" style="text-align:center;font-size:13px;">Detecting internal transfers, supplemental income, and pass-throughs</p>
     </div>
 
     <!-- Results state -->
     <div id="ptResults" style="display:none;">
-      <h3 id="ptResultsTitle">Pass-through candidates</h3>
-      <p class="muted" style="font-size:13px;margin:6px 0 14px;">Each pair below shows a receiving transaction matched to a similar outgoing one. Checked pairs will be excluded from P&amp;L. Uncheck any that are coincidental.</p>
+      <h3 id="ptResultsTitle">Scan results</h3>
+      <p class="muted" style="font-size:13px;margin:6px 0 10px;">Review the detected items below. Uncheck anything that looks wrong before applying.</p>
       <div id="ptPairList" class="pt-pair-list"></div>
       <div id="ptNone" style="display:none;text-align:center;padding:24px 0;">
         <p style="font-size:20px;margin-bottom:8px;">&#10003;</p>
-        <p class="muted">No pass-through pairs found. All personal income looks clean.</p>
+        <p class="muted">Nothing detected. All transactions look clean.</p>
+        <button class="btn btn-approve" style="margin-top:16px;width:100%;" onclick="closePassthrough()">OK</button>
       </div>
       <div id="ptResultActions" style="display:flex;flex-direction:column;gap:8px;margin-top:16px;">
-        <button class="btn btn-approve" style="width:100%;" id="ptConfirmBtn" onclick="applyPassthrough()">Mark selected as pass-through</button>
+        <button class="btn btn-approve" style="width:100%;" id="ptConfirmBtn" onclick="applyPassthrough()">Apply selected</button>
         <button class="btn btn-dismiss" style="width:100%;" onclick="closePassthrough()">Cancel</button>
       </div>
     </div>
@@ -334,10 +335,10 @@
   }
 
   // ── Pass-through detection ─────────────────────────────────────────────
-  var _ptPairs = [];
+  var _ptScanResult = {};
 
   function showPassthrough() {
-    _ptPairs = [];
+    _ptScanResult = {};
     document.getElementById('ptScanning').style.display  = 'block';
     document.getElementById('ptResults').style.display   = 'none';
     document.getElementById('ptDone').style.display      = 'none';
@@ -347,57 +348,162 @@
       .then(r => r.json())
       .then(d => {
         if (d.error) { alert('Scan error: ' + d.error); closePassthrough(); return; }
-        _ptPairs = d.pairs || [];
-        renderPtResults(_ptPairs);
+        _ptScanResult = d;
+        renderPtResults(d);
       })
       .catch(e => { alert('Network error: ' + e.message); closePassthrough(); });
   }
 
-  function renderPtResults(pairs) {
+  function ptAccountTag(p) {
+    var parts = [];
+    if (p.account) parts.push(p.account);
+    if (p.card)    parts.push(p.card);
+    if (p.bank)    parts.push(p.bank);
+    return parts.length ? '<span class="pt-acct">' + escHtml(parts.join(' · ')) + '</span>' : '';
+  }
+
+  function makePairRow(pair, type) {
+    var isSupp = (type === 'supplemental');
+    var div = document.createElement('div');
+    div.className = 'pt-pair' + (isSupp ? ' pt-supplemental' : '');
+    var cbAttrs = 'class="pt-check" data-type="' + type + '"'
+      + ' data-in="'  + (pair.in  ? pair.in.id  : '') + '"'
+      + ' data-out="' + (pair.out ? pair.out.id  : '') + '"'
+      + (isSupp ? ' data-id="' + (pair.in ? pair.in.id : '') + '"' : '');
+    var inRow = pair.in ? (
+      '<div class="pt-pair-row">' +
+        '<span class="pt-badge pt-in">IN</span>' +
+        '<span class="pt-date mono">' + pair.in.date + '</span>' +
+        '<span class="pt-vendor">' + escHtml(pair.in.vendor) + '</span>' +
+        ptAccountTag(pair.in) +
+        '<span class="pt-amount positive">+$' + Math.abs(pair.in.amount).toLocaleString('en-CA', {minimumFractionDigits:2}) + '</span>' +
+      '</div>') : '';
+    var outRow = pair.out ? (
+      '<div class="pt-pair-row">' +
+        '<span class="pt-badge pt-out">OUT</span>' +
+        '<span class="pt-date mono">' + pair.out.date + '</span>' +
+        '<span class="pt-vendor">' + escHtml(pair.out.vendor) + '</span>' +
+        ptAccountTag(pair.out) +
+        '<span class="pt-amount negative">−$' + Math.abs(pair.out.amount).toLocaleString('en-CA', {minimumFractionDigits:2}) + '</span>' +
+      '</div>') : '';
+    div.innerHTML =
+      '<label class="pt-pair-label">' +
+        '<input type="checkbox" ' + cbAttrs + ' checked>' +
+        '<div class="pt-pair-rows">' + inRow + outRow + '</div>' +
+      '</label>';
+    return div;
+  }
+
+  // Build an accordion section with a select-all header checkbox
+  function makeSection(label, count, items, buildRowFn, groupClass) {
+    var section = document.createElement('div');
+    section.className = 'pt-accordion' + (groupClass ? ' ' + groupClass : '');
+
+    // Header row: toggle chevron + label + count + select-all checkbox
+    var header = document.createElement('div');
+    header.className = 'pt-accordion-header';
+    header.innerHTML =
+      '<span class="pt-accordion-chevron">&#9660;</span>' +
+      '<span class="pt-accordion-label">' + escHtml(label) + '</span>' +
+      '<span class="pt-accordion-count">' + count + '</span>' +
+      '<label class="pt-select-all-label" onclick="event.stopPropagation()">' +
+        '<input type="checkbox" class="pt-select-all" checked> Select all' +
+      '</label>';
+
+    var body = document.createElement('div');
+    body.className = 'pt-accordion-body';
+    items.forEach(function(item) { body.appendChild(buildRowFn(item)); });
+
+    // Accordion toggle
+    header.addEventListener('click', function() {
+      section.classList.toggle('pt-accordion--collapsed');
+    });
+
+    // Select-all toggle
+    var selectAll = header.querySelector('.pt-select-all');
+    selectAll.addEventListener('change', function() {
+      body.querySelectorAll('.pt-check').forEach(function(cb) {
+        cb.checked = selectAll.checked;
+      });
+    });
+
+    // Keep select-all in sync when individual checkboxes change
+    body.addEventListener('change', function(e) {
+      if (!e.target.classList.contains('pt-check')) return;
+      var all  = body.querySelectorAll('.pt-check');
+      var chk  = body.querySelectorAll('.pt-check:checked');
+      selectAll.checked = (chk.length === all.length);
+      selectAll.indeterminate = (chk.length > 0 && chk.length < all.length);
+    });
+
+    section.appendChild(header);
+    section.appendChild(body);
+    return section;
+  }
+
+  function renderPtResults(d) {
     var list = document.getElementById('ptPairList');
     list.innerHTML = '';
 
-    if (pairs.length === 0) {
+    var intPairs = d.internal_pairs    || [];
+    var odPairs  = d.owner_draw_pairs  || [];
+    var suppl    = d.supplemental      || [];
+    var ptPairs  = d.passthrough_pairs || [];
+    var total    = intPairs.length + odPairs.length + suppl.length + ptPairs.length;
+
+    if (total === 0) {
       document.getElementById('ptNone').style.display = 'block';
       document.getElementById('ptResultActions').style.display = 'none';
     } else {
       document.getElementById('ptNone').style.display = 'none';
       document.getElementById('ptResultActions').style.display = 'flex';
-      document.getElementById('ptResultsTitle').textContent =
-        pairs.length + ' pass-through pair' + (pairs.length === 1 ? '' : 's') + ' detected';
 
-      pairs.forEach(function(pair, i) {
-        var div = document.createElement('div');
-        div.className = 'pt-pair';
-        function ptAccountTag(p) {
-          var parts = [];
-          if (p.account) parts.push(p.account);
-          if (p.card)    parts.push(p.card);
-          if (p.bank)    parts.push(p.bank);
-          return parts.length ? '<span class="pt-acct">' + escHtml(parts.join(' · ')) + '</span>' : '';
-        }
-        div.innerHTML =
-          '<label class="pt-pair-label">' +
-            '<input type="checkbox" class="pt-check" data-in="' + pair.in.id + '" data-out="' + pair.out.id + '" checked>' +
-            '<div class="pt-pair-rows">' +
-              '<div class="pt-pair-row">' +
-                '<span class="pt-badge pt-in">IN</span>' +
-                '<span class="pt-date mono">' + pair.in.date + '</span>' +
-                '<span class="pt-vendor">' + escHtml(pair.in.vendor) + '</span>' +
-                ptAccountTag(pair.in) +
-                '<span class="pt-amount positive">+$' + Math.abs(pair.in.amount).toLocaleString('en-CA', {minimumFractionDigits:2}) + '</span>' +
-              '</div>' +
-              '<div class="pt-pair-row">' +
-                '<span class="pt-badge pt-out">OUT</span>' +
-                '<span class="pt-date mono">' + pair.out.date + '</span>' +
-                '<span class="pt-vendor">' + escHtml(pair.out.vendor) + '</span>' +
-                ptAccountTag(pair.out) +
-                '<span class="pt-amount negative">−$' + Math.abs(pair.out.amount).toLocaleString('en-CA', {minimumFractionDigits:2}) + '</span>' +
-              '</div>' +
-            '</div>' +
-          '</label>';
-        list.appendChild(div);
-      });
+      var parts = [];
+      if (intPairs.length) parts.push(intPairs.length + ' internal transfer' + (intPairs.length > 1 ? 's' : ''));
+      if (odPairs.length)  parts.push(odPairs.length  + ' owner\'s draw');
+      if (suppl.length)    parts.push(suppl.length    + ' supplemental income');
+      if (ptPairs.length)  parts.push(ptPairs.length  + ' pass-through pair' + (ptPairs.length > 1 ? 's' : ''));
+      document.getElementById('ptResultsTitle').textContent = parts.join(' · ') + ' detected';
+
+      if (intPairs.length) {
+        list.appendChild(makeSection(
+          'Internal account transfers — both marked Pass-through',
+          intPairs.length,
+          intPairs,
+          function(p) { return makePairRow(p, 'passthrough'); },
+          ''
+        ));
+      }
+
+      if (odPairs.length) {
+        list.appendChild(makeSection(
+          "Owner's Draw — business expense + personal income",
+          odPairs.length,
+          odPairs,
+          function(p) { return makePairRow(p, 'owner_draw'); },
+          'pt-accordion--owner-draw'
+        ));
+      }
+
+      if (suppl.length) {
+        list.appendChild(makeSection(
+          'Supplemental income — marked Income / Supplemental',
+          suppl.length,
+          suppl,
+          function(r) { return makePairRow({in: r, out: null}, 'supplemental'); },
+          'pt-accordion--supplemental'
+        ));
+      }
+
+      if (ptPairs.length) {
+        list.appendChild(makeSection(
+          'Pass-through pairs — both marked Pass-through',
+          ptPairs.length,
+          ptPairs,
+          function(p) { return makePairRow(p, 'passthrough'); },
+          ''
+        ));
+      }
     }
 
     document.getElementById('ptScanning').style.display = 'none';
@@ -406,15 +512,22 @@
 
   function applyPassthrough() {
     var checked = document.querySelectorAll('.pt-check:checked');
-    if (checked.length === 0) {
-      closePassthrough();
-      return;
-    }
+    if (checked.length === 0) { closePassthrough(); return; }
 
-    var ids = [];
+    var passthroughIds  = [];
+    var supplementalIds = [];
+    var ownerDrawIds    = [];
+
     checked.forEach(function(cb) {
-      ids.push(cb.dataset.in);
-      ids.push(cb.dataset.out);
+      if (cb.dataset.type === 'supplemental') {
+        if (cb.dataset.id) supplementalIds.push(cb.dataset.id);
+      } else if (cb.dataset.type === 'owner_draw') {
+        if (cb.dataset.in)  ownerDrawIds.push(cb.dataset.in);
+        if (cb.dataset.out) ownerDrawIds.push(cb.dataset.out);
+      } else {
+        if (cb.dataset.in)  passthroughIds.push(cb.dataset.in);
+        if (cb.dataset.out) passthroughIds.push(cb.dataset.out);
+      }
     });
 
     document.getElementById('ptConfirmBtn').disabled = true;
@@ -423,16 +536,23 @@
     fetch('/passthrough/apply', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transaction_ids: ids }),
+      body: JSON.stringify({ passthrough_ids: passthroughIds, supplemental_ids: supplementalIds, owner_draw_ids: ownerDrawIds }),
     })
       .then(r => r.json())
       .then(d => {
-        if (d.error) { alert('Error: ' + d.error); document.getElementById('ptConfirmBtn').disabled = false; document.getElementById('ptConfirmBtn').textContent = 'Mark selected as pass-through'; return; }
-        var pairs = checked.length;
+        if (d.error) {
+          alert('Error: ' + d.error);
+          document.getElementById('ptConfirmBtn').disabled = false;
+          document.getElementById('ptConfirmBtn').textContent = 'Apply selected';
+          return;
+        }
+        var ptUpdated  = d.passthrough_updated  || 0;
+        var supUpdated = d.supplemental_updated || 0;
+        var odUpdated  = d.owner_draw_updated   || 0;
         document.getElementById('ptDoneMsg').innerHTML =
-          '<div class="recat-result-row"><span>Pairs confirmed</span><strong>' + pairs + '</strong></div>' +
-          '<div class="recat-result-row"><span>Transactions excluded</span><strong>' + (d.updated || 0) + '</strong></div>' +
-          '<div class="recat-result-row"><span>Category assigned</span><strong>Pass-through</strong></div>';
+          (ptUpdated  ? '<div class="recat-result-row"><span>Pass-through transactions excluded</span><strong>' + ptUpdated + '</strong></div>' : '') +
+          (odUpdated  ? '<div class="recat-result-row"><span>Owner\'s draw transactions classified</span><strong>' + odUpdated + '</strong></div>' : '') +
+          (supUpdated ? '<div class="recat-result-row"><span>Supplemental income tagged</span><strong>' + supUpdated + '</strong></div>' : '');
         document.getElementById('ptResults').style.display = 'none';
         document.getElementById('ptDone').style.display    = 'block';
       })

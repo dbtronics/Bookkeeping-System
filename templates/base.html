@@ -42,6 +42,9 @@
       <li><a href="{{ url_for('dashboard.dashboard_personal') }}" class="nav-link {% if request.endpoint == 'dashboard.dashboard_personal' %}active{% endif %}">
         <span class="nav-icon purple">▸</span> Personal
       </a></li>
+      <li><a href="{{ url_for('dashboard.dashboard_ledger') }}" class="nav-link {% if request.endpoint == 'dashboard.dashboard_ledger' %}active{% endif %}">
+        <span class="nav-icon">☰</span> Ledger
+      </a></li>
       <li><a href="{{ url_for('dashboard.dashboard_flagged') }}" class="nav-link {% if request.endpoint == 'dashboard.dashboard_flagged' %}active{% endif %}">
         <span class="nav-icon red">⚑</span> Flagged
         {% if flagged_count is defined and flagged_count > 0 %}

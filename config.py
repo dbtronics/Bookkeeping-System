@@ -17,6 +17,7 @@ MASTER_RECEIPTS_CSV     = NEXTCLOUD_BASE / "master" / "master_receipts.csv"
 RULES_JSON              = NEXTCLOUD_BASE / "master" / "rules" / "rules.json"
 RULES_ARCHIVE_DIR       = NEXTCLOUD_BASE / "master" / "rules"
 SUGGESTED_RULES_FILE    = RULES_ARCHIVE_DIR / "rules_suggested.json"  # used by: categorizer.py
+TRANSFER_CONFIG_JSON    = RULES_ARCHIVE_DIR / "transfer_config.json"  # internal transfer keywords
 
 
 # =============================================================================
@@ -135,6 +136,7 @@ TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID")
 # =============================================================================
 BUSINESS_CATEGORIES = [
     "Revenue",
+    "Owner's Draw",
     "SaaS tools",
     "Contractors",
     "Insurance",

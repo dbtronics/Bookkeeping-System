@@ -9,14 +9,14 @@ import anthropic
 from flask import Blueprint, session, redirect, url_for, render_template, request, jsonify
 
 from config import (
-    RULES_JSON, RULES_ARCHIVE_DIR,
+    RULES_JSON, RULES_ARCHIVE_DIR, TRANSFER_CONFIG_JSON,
     ANTHROPIC_API_KEY, HAIKU_MODEL, SONNET_MODEL,
     NL_MODELS, NL_DEFAULT_MODEL, NL_MODEL_PRICING, USD_TO_CAD,
     BUSINESS_CATEGORIES, PERSONAL_CATEGORIES,
     PASSTHROUGH_TOLERANCE, PASSTHROUGH_WINDOW_DAYS,
     EXCLUDE_FROM_PNL_CATEGORIES,
 )
-from dashboard.aggregator import get_overview, get_business, get_personal, get_flagged, detect_passthrough_pairs
+from dashboard.aggregator import get_overview, get_business, get_personal, get_flagged, get_ledger, detect_passthrough_pairs, scan_transactions
 
 # Shared state for the recategorize background job (single-user app)
 _recategorize_state = {}
@@ -134,17 +134,36 @@ def dashboard_flagged():
     return render_template("flagged.html", **data)
 
 
+@dashboard_bp.route("/ledger")
+@login_required
+def dashboard_ledger():
+    month       = request.args.get("month")
+    account     = request.args.get("account")
+    search      = request.args.get("q", "").strip()
+    data = get_ledger(month_filter=month, account_type_filter=account or None, search=search or None)
+    return render_template(
+        "ledger.html",
+        business_categories=BUSINESS_CATEGORIES,
+        personal_categories=PERSONAL_CATEGORIES,
+        search=search,
+        account_filter=account or "",
+        **data,
+    )
+
+
 @dashboard_bp.route("/rules")
 @login_required
 def dashboard_rules():
     rules = _load_rules()
     suggested = _load_suggested_rules()
+    cfg = _load_transfer_config()
     return render_template(
         "rules.html",
         rules=rules,
         suggested=suggested,
         business_categories=BUSINESS_CATEGORIES,
         personal_categories=PERSONAL_CATEGORIES,
+        transfer_keywords=cfg.get("internal_transfer_keywords", []),
     )
 
 
@@ -701,16 +720,94 @@ def transactions_update():
 
 
 # ---------------------------------------------------------------------------
+# Transfer keyword management
+# ---------------------------------------------------------------------------
+
+def _load_transfer_config():
+    path = Path(TRANSFER_CONFIG_JSON)
+    if not path.exists():
+        return {"internal_transfer_keywords": ["INTERNET TRANSFER", "PAYMENT THANK YOU"]}
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        log.error("Failed to load transfer_config.json: %s", e)
+        return {"internal_transfer_keywords": []}
+
+
+def _save_transfer_config(data):
+    path = Path(TRANSFER_CONFIG_JSON)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+@dashboard_bp.route("/settings/transfer-keywords", methods=["GET"])
+@login_required
+def transfer_keywords_get():
+    """Return current list of internal transfer keywords."""
+    cfg = _load_transfer_config()
+    return jsonify({"keywords": cfg.get("internal_transfer_keywords", [])})
+
+
+@dashboard_bp.route("/settings/transfer-keywords/add", methods=["POST"])
+@login_required
+def transfer_keywords_add():
+    """Add a keyword to the internal transfer list.
+
+    Request:  { "keyword": "INTERNET TRANSFER" }
+    Response: { "status": "ok", "keywords": [...] }
+    """
+    data    = request.get_json(silent=True) or {}
+    keyword = (data.get("keyword") or "").strip().upper()
+    if not keyword:
+        return jsonify({"error": "keyword is required"}), 400
+    cfg = _load_transfer_config()
+    kws = cfg.get("internal_transfer_keywords", [])
+    if keyword not in kws:
+        kws.append(keyword)
+        cfg["internal_transfer_keywords"] = kws
+        _save_transfer_config(cfg)
+        log.info("Transfer keyword added: %s", keyword)
+    return jsonify({"status": "ok", "keywords": kws})
+
+
+@dashboard_bp.route("/settings/transfer-keywords/delete", methods=["POST"])
+@login_required
+def transfer_keywords_delete():
+    """Remove a keyword from the internal transfer list.
+
+    Request:  { "keyword": "PAYMENT THANK YOU" }
+    Response: { "status": "ok", "keywords": [...] }
+    """
+    data    = request.get_json(silent=True) or {}
+    keyword = (data.get("keyword") or "").strip().upper()
+    if not keyword:
+        return jsonify({"error": "keyword is required"}), 400
+    cfg = _load_transfer_config()
+    kws = [k for k in cfg.get("internal_transfer_keywords", []) if k != keyword]
+    cfg["internal_transfer_keywords"] = kws
+    _save_transfer_config(cfg)
+    log.info("Transfer keyword removed: %s", keyword)
+    return jsonify({"status": "ok", "keywords": kws})
+
+
+# ---------------------------------------------------------------------------
 # Pass-through detection
 # ---------------------------------------------------------------------------
 
 @dashboard_bp.route("/passthrough/scan", methods=["POST"])
 @login_required
 def passthrough_scan():
-    """Scan personal transactions for pass-through pairs.
+    """Three-pass scan: internal pairs, supplemental income, legacy pass-throughs.
 
-    Request (optional):  { "tolerance": 1.00, "window_days": 5 }
-    Response: { "status": "ok", "pairs": [...], "count": N }
+    Request (optional): { "tolerance": 1.00, "window_days": 2 }
+    Response: {
+      "status": "ok",
+      "internal_pairs":    [{"in": {...}, "out": {...}}, ...],
+      "supplemental":      [{...}, ...],
+      "passthrough_pairs": [{"in": {...}, "out": {...}}, ...],
+    }
     """
     import csv as csv_mod
     from config import MASTER_TRANSACTIONS_CSV
@@ -721,13 +818,13 @@ def passthrough_scan():
 
     path = Path(MASTER_TRANSACTIONS_CSV)
     if not path.exists():
-        return jsonify({"status": "ok", "pairs": [], "count": 0})
+        return jsonify({"status": "ok", "internal_pairs": [], "supplemental": [], "passthrough_pairs": []})
 
     try:
         with open(path, newline="", encoding="utf-8") as f:
             rows = list(csv_mod.DictReader(f))
 
-        pairs = detect_passthrough_pairs(rows, tolerance=tolerance, window_days=window_days)
+        result = scan_transactions(rows, tolerance=tolerance, window_days=window_days)
 
         def _fmt(r):
             try:
@@ -735,19 +832,22 @@ def passthrough_scan():
             except ValueError:
                 amt = 0.0
             return {
-                "id":       r.get("transaction_id", ""),
-                "date":     r.get("date", ""),
-                "vendor":   r.get("vendor_name") or r.get("description", ""),
-                "amount":   round(amt, 2),
-                "account":  r.get("account_type", ""),
-                "card":     r.get("card_type", ""),
-                "bank":     r.get("bank_name", ""),
+                "id":      r.get("transaction_id", ""),
+                "date":    r.get("date", ""),
+                "vendor":  r.get("vendor_name") or r.get("description", ""),
+                "amount":  round(amt, 2),
+                "account": r.get("account_type", ""),
+                "card":    r.get("card_type", ""),
+                "bank":    r.get("bank_name", ""),
             }
 
-        result = [{"in": _fmt(p["in"]), "out": _fmt(p["out"])} for p in pairs]
-        log.info("Passthrough scan: found %d pairs (tolerance=%.2f window=%dd)",
-                 len(result), tolerance, window_days)
-        return jsonify({"status": "ok", "pairs": result, "count": len(result)})
+        return jsonify({
+            "status": "ok",
+            "internal_pairs":    [{"in": _fmt(p["in"]),  "out": _fmt(p["out"])}  for p in result["internal_pairs"]],
+            "owner_draw_pairs":  [{"in": _fmt(p["in"]),  "out": _fmt(p["out"])}  for p in result["owner_draw_pairs"]],
+            "supplemental":      [_fmt(r) for r in result["supplemental"]],
+            "passthrough_pairs": [{"in": _fmt(p["in"]),  "out": _fmt(p["out"])}  for p in result["passthrough_pairs"]],
+        })
 
     except Exception as e:
         log.error("Passthrough scan failed: %s", e)
@@ -757,19 +857,24 @@ def passthrough_scan():
 @dashboard_bp.route("/passthrough/apply", methods=["POST"])
 @login_required
 def passthrough_apply():
-    """Mark confirmed pass-through transaction IDs as excluded from P&L.
+    """Apply scan results: mark pass-through IDs and supplemental income IDs.
 
-    Request:  { "transaction_ids": ["TXN-...", "TXN-..."] }
-    Response: { "status": "ok", "updated": N }
+    Request: {
+      "passthrough_ids":  ["TXN-...", ...],   # → Pass-through, exclude_from_pnl=True
+      "supplemental_ids": ["TXN-...", ...],   # → Income/Supplemental, exclude_from_pnl=False
+    }
+    Response: { "status": "ok", "passthrough_updated": N, "supplemental_updated": N }
     """
     import csv as csv_mod, shutil
     from config import MASTER_TRANSACTIONS_CSV
     from csv_utils import TRANSACTION_HEADERS
 
-    data    = request.get_json(silent=True) or {}
-    txn_ids = set(data.get("transaction_ids", []))
+    data             = request.get_json(silent=True) or {}
+    passthrough_ids  = set(data.get("passthrough_ids",  []))
+    supplemental_ids = set(data.get("supplemental_ids", []))
+    owner_draw_ids   = set(data.get("owner_draw_ids",   []))
 
-    if not txn_ids:
+    if not passthrough_ids and not supplemental_ids and not owner_draw_ids:
         return jsonify({"error": "No transaction IDs provided"}), 400
 
     path = Path(MASTER_TRANSACTIONS_CSV)
@@ -780,15 +885,42 @@ def passthrough_apply():
         with open(path, newline="", encoding="utf-8") as f:
             rows = list(csv_mod.DictReader(f))
 
-        updated = 0
+        pt_updated  = 0
+        sup_updated = 0
+        od_updated  = 0
+
         for row in rows:
-            if row.get("transaction_id") in txn_ids:
+            tid = row.get("transaction_id", "")
+            if tid in passthrough_ids:
                 row["exclude_from_pnl"] = "True"
                 row["category"]         = "Pass-through"
                 row["categorized_by"]   = "manual"
                 row["flagged"]          = "False"
                 row["flag_reason"]      = ""
-                updated += 1
+                pt_updated += 1
+            elif tid in supplemental_ids:
+                acct = row.get("account_type", "personal")
+                row["category"]         = "Revenue" if acct == "business" else "Income"
+                row["subcategory"]      = "Supplemental income"
+                row["exclude_from_pnl"] = "False"
+                row["categorized_by"]   = "manual"
+                row["flagged"]          = "False"
+                row["flag_reason"]      = ""
+                sup_updated += 1
+            elif tid in owner_draw_ids:
+                acct = row.get("account_type", "personal")
+                if acct == "business":
+                    row["category"]    = "Owner's Draw"
+                    row["subcategory"] = ""
+                else:
+                    row["category"]    = "Income"
+                    row["subcategory"] = "Owner's Draw"
+                row["vendor_name"]      = "Internal Transfer"
+                row["exclude_from_pnl"] = "False"
+                row["categorized_by"]   = "manual"
+                row["flagged"]          = "False"
+                row["flag_reason"]      = ""
+                od_updated += 1
 
         tmp = path.with_suffix(".tmp")
         with open(tmp, "w", newline="", encoding="utf-8") as f:
@@ -797,8 +929,8 @@ def passthrough_apply():
             writer.writerows(rows)
         shutil.move(str(tmp), str(path))
 
-        log.info("Passthrough apply: excluded %d transactions", updated)
-        return jsonify({"status": "ok", "updated": updated})
+        log.info("Passthrough apply: %d pass-through, %d supplemental, %d owner's draw", pt_updated, sup_updated, od_updated)
+        return jsonify({"status": "ok", "passthrough_updated": pt_updated, "supplemental_updated": sup_updated, "owner_draw_updated": od_updated})
 
     except Exception as e:
         log.error("Passthrough apply failed: %s", e)
