@@ -143,6 +143,7 @@ BUSINESS_CATEGORIES = [
     "Banking fees",
     "Office supplies",
     "Professional services",
+    "Credit card payment",
     "Uncategorized",
 ]
 
@@ -155,6 +156,7 @@ PERSONAL_CATEGORIES = [
     "Subscriptions",
     "Healthcare",
     "Transport",
+    "Credit card payment",
     "Uncategorized",
 ]
 

@@ -280,6 +280,10 @@ def detect_passthrough_pairs(rows, tolerance=None, window_days=None):
             date_diff = abs((inc_date - out_date).days)
 
             if amt_diff <= tolerance and date_diff <= window_days:
+                # Skip cross-account-type pairs: business OUT + personal IN is a
+                # salary draw (real personal income), not a pass-through
+                if inc.get("account_type") != out.get("account_type"):
+                    continue
                 dist = date_diff * 2 + amt_diff   # prioritise closeness in time
                 if dist < best_dist:
                     best_dist = dist
