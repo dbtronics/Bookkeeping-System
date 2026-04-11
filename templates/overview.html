@@ -5,8 +5,11 @@
 
 {% block content %}
 
-<!-- Recategorize button + modal -->
-<div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
+<!-- Action buttons -->
+<div style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:16px;">
+  <button class="btn btn-passthrough" onclick="showPassthrough()">
+    &#x21C4; Detect pass-throughs
+  </button>
   <button class="btn btn-recategorize" onclick="showRecatWarning()">
     &#x21BB; Recategorize all transactions
   </button>
@@ -34,6 +37,42 @@
       </div>
       <div id="recatStats" class="recat-stats"></div>
       <button id="recatOk" class="btn btn-approve" style="display:none;margin-top:20px;width:100%;" onclick="closeRecat()">OK</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- Pass-through detection modal -->
+<div id="ptOverlay" class="recat-overlay" style="display:none;">
+  <div class="recat-modal" style="width:560px;max-width:95vw;">
+
+    <!-- Scanning state -->
+    <div id="ptScanning">
+      <h3>Scanning for pass-throughs…</h3>
+      <div class="recat-spinner" style="margin:24px auto;"></div>
+      <p class="muted" style="text-align:center;font-size:13px;">Checking personal transactions within ±$1 and 5 days</p>
+    </div>
+
+    <!-- Results state -->
+    <div id="ptResults" style="display:none;">
+      <h3 id="ptResultsTitle">Pass-through candidates</h3>
+      <p class="muted" style="font-size:13px;margin:6px 0 14px;">Each pair below shows a receiving transaction matched to a similar outgoing one. Checked pairs will be excluded from P&amp;L. Uncheck any that are coincidental.</p>
+      <div id="ptPairList" class="pt-pair-list"></div>
+      <div id="ptNone" style="display:none;text-align:center;padding:24px 0;">
+        <p style="font-size:20px;margin-bottom:8px;">&#10003;</p>
+        <p class="muted">No pass-through pairs found. All personal income looks clean.</p>
+      </div>
+      <div id="ptResultActions" style="display:flex;flex-direction:column;gap:8px;margin-top:16px;">
+        <button class="btn btn-approve" style="width:100%;" id="ptConfirmBtn" onclick="applyPassthrough()">Mark selected as pass-through</button>
+        <button class="btn btn-dismiss" style="width:100%;" onclick="closePassthrough()">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Done state -->
+    <div id="ptDone" style="display:none;">
+      <h3>Done &#10003;</h3>
+      <div id="ptDoneMsg" class="recat-stats" style="margin:16px 0;"></div>
+      <button class="btn btn-approve" style="width:100%;" onclick="closePtAndReload()">OK</button>
     </div>
 
   </div>
@@ -292,6 +331,116 @@
     document.getElementById('recatOverlay').style.display = 'none';
     if (_recatTimer) { clearInterval(_recatTimer); _recatTimer = null; }
     window.location.reload();
+  }
+
+  // ── Pass-through detection ─────────────────────────────────────────────
+  var _ptPairs = [];
+
+  function showPassthrough() {
+    _ptPairs = [];
+    document.getElementById('ptScanning').style.display  = 'block';
+    document.getElementById('ptResults').style.display   = 'none';
+    document.getElementById('ptDone').style.display      = 'none';
+    document.getElementById('ptOverlay').style.display   = 'flex';
+
+    fetch('/passthrough/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { alert('Scan error: ' + d.error); closePassthrough(); return; }
+        _ptPairs = d.pairs || [];
+        renderPtResults(_ptPairs);
+      })
+      .catch(e => { alert('Network error: ' + e.message); closePassthrough(); });
+  }
+
+  function renderPtResults(pairs) {
+    var list = document.getElementById('ptPairList');
+    list.innerHTML = '';
+
+    if (pairs.length === 0) {
+      document.getElementById('ptNone').style.display = 'block';
+      document.getElementById('ptResultActions').style.display = 'none';
+    } else {
+      document.getElementById('ptNone').style.display = 'none';
+      document.getElementById('ptResultActions').style.display = 'flex';
+      document.getElementById('ptResultsTitle').textContent =
+        pairs.length + ' pass-through pair' + (pairs.length === 1 ? '' : 's') + ' detected';
+
+      pairs.forEach(function(pair, i) {
+        var div = document.createElement('div');
+        div.className = 'pt-pair';
+        div.innerHTML =
+          '<label class="pt-pair-label">' +
+            '<input type="checkbox" class="pt-check" data-in="' + pair.in.id + '" data-out="' + pair.out.id + '" checked>' +
+            '<div class="pt-pair-rows">' +
+              '<div class="pt-pair-row">' +
+                '<span class="pt-badge pt-in">IN</span>' +
+                '<span class="pt-date mono">' + pair.in.date + '</span>' +
+                '<span class="pt-vendor">' + escHtml(pair.in.vendor) + '</span>' +
+                '<span class="pt-amount positive">+$' + Math.abs(pair.in.amount).toLocaleString('en-CA', {minimumFractionDigits:2}) + '</span>' +
+              '</div>' +
+              '<div class="pt-pair-row">' +
+                '<span class="pt-badge pt-out">OUT</span>' +
+                '<span class="pt-date mono">' + pair.out.date + '</span>' +
+                '<span class="pt-vendor">' + escHtml(pair.out.vendor) + '</span>' +
+                '<span class="pt-amount negative">−$' + Math.abs(pair.out.amount).toLocaleString('en-CA', {minimumFractionDigits:2}) + '</span>' +
+              '</div>' +
+            '</div>' +
+          '</label>';
+        list.appendChild(div);
+      });
+    }
+
+    document.getElementById('ptScanning').style.display = 'none';
+    document.getElementById('ptResults').style.display  = 'block';
+  }
+
+  function applyPassthrough() {
+    var checked = document.querySelectorAll('.pt-check:checked');
+    if (checked.length === 0) {
+      closePassthrough();
+      return;
+    }
+
+    var ids = [];
+    checked.forEach(function(cb) {
+      ids.push(cb.dataset.in);
+      ids.push(cb.dataset.out);
+    });
+
+    document.getElementById('ptConfirmBtn').disabled = true;
+    document.getElementById('ptConfirmBtn').textContent = 'Applying…';
+
+    fetch('/passthrough/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transaction_ids: ids }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { alert('Error: ' + d.error); document.getElementById('ptConfirmBtn').disabled = false; document.getElementById('ptConfirmBtn').textContent = 'Mark selected as pass-through'; return; }
+        var pairs = checked.length;
+        document.getElementById('ptDoneMsg').innerHTML =
+          '<div class="recat-result-row"><span>Pairs confirmed</span><strong>' + pairs + '</strong></div>' +
+          '<div class="recat-result-row"><span>Transactions excluded</span><strong>' + (d.updated || 0) + '</strong></div>' +
+          '<div class="recat-result-row"><span>Category assigned</span><strong>Pass-through</strong></div>';
+        document.getElementById('ptResults').style.display = 'none';
+        document.getElementById('ptDone').style.display    = 'block';
+      })
+      .catch(e => { alert('Network error: ' + e.message); });
+  }
+
+  function closePassthrough() {
+    document.getElementById('ptOverlay').style.display = 'none';
+  }
+
+  function closePtAndReload() {
+    closePassthrough();
+    window.location.reload();
+  }
+
+  function escHtml(s) {
+    return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 </script>
 {% endblock %}

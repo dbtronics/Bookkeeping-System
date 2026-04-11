@@ -234,6 +234,66 @@ def _sort_dict(d, top=None):
     return [(k, round(v, 2)) for k, v in items]
 
 
+def detect_passthrough_pairs(rows, tolerance=1.00, window_days=5):
+    """Find (incoming, outgoing) personal transaction pairs where amounts match
+    within `tolerance` and dates are within `window_days` of each other.
+
+    These are candidates for pass-through / mediary transactions that should be
+    excluded from P&L (the account just forwarded the money).
+
+    Returns a list of {"in": row, "out": row} dicts, greedily matched by
+    smallest time-then-amount distance. Each row appears in at most one pair.
+    """
+    from datetime import datetime
+
+    candidates = [
+        r for r in rows
+        if r.get("account_type") == "personal"
+        and r.get("exclude_from_pnl", "").strip().lower() != "true"
+    ]
+
+    incoming = [r for r in candidates if _amount(r) > 0]
+    outgoing = [r for r in candidates if _amount(r) < 0]
+
+    used_out = set()
+    pairs    = []
+
+    for inc in incoming:
+        inc_amt = _amount(inc)
+        try:
+            inc_date = datetime.strptime(inc["date"], "%Y-%m-%d")
+        except (ValueError, KeyError):
+            continue
+
+        best      = None
+        best_dist = float("inf")
+
+        for j, out in enumerate(outgoing):
+            if j in used_out:
+                continue
+            out_amt = abs(_amount(out))
+            try:
+                out_date = datetime.strptime(out["date"], "%Y-%m-%d")
+            except (ValueError, KeyError):
+                continue
+
+            amt_diff  = abs(inc_amt - out_amt)
+            date_diff = abs((inc_date - out_date).days)
+
+            if amt_diff <= tolerance and date_diff <= window_days:
+                dist = date_diff * 2 + amt_diff   # prioritise closeness in time
+                if dist < best_dist:
+                    best_dist = dist
+                    best      = (j, out)
+
+        if best:
+            j, out = best
+            used_out.add(j)
+            pairs.append({"in": inc, "out": out})
+
+    return pairs
+
+
 def _build_categories_tree(rows):
     """Build [{name, total, subcategories, transactions}] sorted by abs total.
 

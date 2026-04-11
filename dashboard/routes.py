@@ -14,7 +14,7 @@ from config import (
     NL_MODELS, NL_DEFAULT_MODEL, NL_MODEL_PRICING, USD_TO_CAD,
     BUSINESS_CATEGORIES, PERSONAL_CATEGORIES,
 )
-from dashboard.aggregator import get_overview, get_business, get_personal, get_flagged
+from dashboard.aggregator import get_overview, get_business, get_personal, get_flagged, detect_passthrough_pairs
 
 # Shared state for the recategorize background job (single-user app)
 _recategorize_state = {}
@@ -645,7 +645,9 @@ def transactions_update():
             if matches:
                 row["category"]       = category
                 row["subcategory"]    = subcategory
-                row["categorized_by"] = "manual"
+                # "rule" only when scope=all AND a rule is being created;
+                # every other manual edit stays as "manual"
+                row["categorized_by"] = "rule" if (scope == "all" and create_rule) else "manual"
                 row["flagged"]        = "False"
                 row["flag_reason"]    = ""
                 updated += 1
@@ -680,4 +682,106 @@ def transactions_update():
 
     except Exception as e:
         log.error("Transaction update failed: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Pass-through detection
+# ---------------------------------------------------------------------------
+
+@dashboard_bp.route("/passthrough/scan", methods=["POST"])
+@login_required
+def passthrough_scan():
+    """Scan personal transactions for pass-through pairs.
+
+    Request (optional):  { "tolerance": 1.00, "window_days": 5 }
+    Response: { "status": "ok", "pairs": [...], "count": N }
+    """
+    import csv as csv_mod
+    from config import MASTER_TRANSACTIONS_CSV
+
+    data        = request.get_json(silent=True) or {}
+    tolerance   = float(data.get("tolerance",   1.00))
+    window_days = int(data.get("window_days",   5))
+
+    path = Path(MASTER_TRANSACTIONS_CSV)
+    if not path.exists():
+        return jsonify({"status": "ok", "pairs": [], "count": 0})
+
+    try:
+        with open(path, newline="", encoding="utf-8") as f:
+            rows = list(csv_mod.DictReader(f))
+
+        pairs = detect_passthrough_pairs(rows, tolerance=tolerance, window_days=window_days)
+
+        def _fmt(r):
+            try:
+                amt = float(r.get("amount", 0))
+            except ValueError:
+                amt = 0.0
+            return {
+                "id":     r.get("transaction_id", ""),
+                "date":   r.get("date", ""),
+                "vendor": r.get("vendor_name") or r.get("description", ""),
+                "amount": round(amt, 2),
+            }
+
+        result = [{"in": _fmt(p["in"]), "out": _fmt(p["out"])} for p in pairs]
+        log.info("Passthrough scan: found %d pairs (tolerance=%.2f window=%dd)",
+                 len(result), tolerance, window_days)
+        return jsonify({"status": "ok", "pairs": result, "count": len(result)})
+
+    except Exception as e:
+        log.error("Passthrough scan failed: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@dashboard_bp.route("/passthrough/apply", methods=["POST"])
+@login_required
+def passthrough_apply():
+    """Mark confirmed pass-through transaction IDs as excluded from P&L.
+
+    Request:  { "transaction_ids": ["TXN-...", "TXN-..."] }
+    Response: { "status": "ok", "updated": N }
+    """
+    import csv as csv_mod, shutil
+    from config import MASTER_TRANSACTIONS_CSV
+    from csv_utils import TRANSACTION_HEADERS
+
+    data    = request.get_json(silent=True) or {}
+    txn_ids = set(data.get("transaction_ids", []))
+
+    if not txn_ids:
+        return jsonify({"error": "No transaction IDs provided"}), 400
+
+    path = Path(MASTER_TRANSACTIONS_CSV)
+    if not path.exists():
+        return jsonify({"error": "master_transactions.csv not found"}), 500
+
+    try:
+        with open(path, newline="", encoding="utf-8") as f:
+            rows = list(csv_mod.DictReader(f))
+
+        updated = 0
+        for row in rows:
+            if row.get("transaction_id") in txn_ids:
+                row["exclude_from_pnl"] = "True"
+                row["category"]         = "Pass-through"
+                row["categorized_by"]   = "manual"
+                row["flagged"]          = "False"
+                row["flag_reason"]      = ""
+                updated += 1
+
+        tmp = path.with_suffix(".tmp")
+        with open(tmp, "w", newline="", encoding="utf-8") as f:
+            writer = csv_mod.DictWriter(f, fieldnames=TRANSACTION_HEADERS, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(rows)
+        shutil.move(str(tmp), str(path))
+
+        log.info("Passthrough apply: excluded %d transactions", updated)
+        return jsonify({"status": "ok", "updated": updated})
+
+    except Exception as e:
+        log.error("Passthrough apply failed: %s", e)
         return jsonify({"error": str(e)}), 500
