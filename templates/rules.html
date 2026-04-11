@@ -71,11 +71,12 @@
           <th>Match</th>
           <th>Apply</th>
           <th>P&amp;L</th>
+          <th style="width:100px"></th>
         </tr>
       </thead>
       <tbody>
         {% for rule in rules %}
-        <tr>
+        <tr id="rule-row-{{ rule.id }}">
           <td class="mono muted">{{ rule.id }}</td>
           <td>{{ rule.description }}</td>
           <td class="mono rule-match">
@@ -97,12 +98,70 @@
             <span class="pill teal">included</span>
             {% endif %}
           </td>
+          <td class="rule-actions-cell">
+            <button class="btn btn-sm btn-edit-rule" data-rule='{{ rule | tojson }}' onclick="openEditRule(this)">Edit</button>
+            <button class="btn btn-sm btn-delete-rule" data-id="{{ rule.id }}" onclick="deleteRule(this)">Delete</button>
+          </td>
         </tr>
         {% else %}
-        <tr><td colspan="5" class="empty">No rules yet.</td></tr>
+        <tr><td colspan="6" class="empty">No rules yet.</td></tr>
         {% endfor %}
       </tbody>
     </table>
+  </div>
+</div>
+
+<!-- Edit rule modal -->
+<div id="editRuleOverlay" class="recat-overlay" style="display:none;">
+  <div class="recat-modal" style="width:480px;max-width:95vw;">
+    <h3 style="margin-bottom:16px;">Edit rule</h3>
+
+    <div class="edit-rule-field">
+      <label>Description</label>
+      <input type="text" id="er-description" class="edit-rule-input">
+    </div>
+    <div class="edit-rule-field">
+      <label>vendor_name_contains <span class="muted">(lowercase keyword in bank description)</span></label>
+      <input type="text" id="er-vendor" class="edit-rule-input">
+    </div>
+    <div class="edit-rule-field">
+      <label>account_type</label>
+      <select id="er-account" class="edit-rule-input">
+        <option value="">Both (omit)</option>
+        <option value="business">business</option>
+        <option value="personal">personal</option>
+      </select>
+    </div>
+    <div class="edit-rule-field">
+      <label>category</label>
+      <select id="er-category" class="edit-rule-input">
+        <optgroup label="Business">
+          {% for c in business_categories %}
+          <option value="{{ c }}">{{ c }}</option>
+          {% endfor %}
+        </optgroup>
+        <optgroup label="Personal">
+          {% for c in personal_categories %}
+          <option value="{{ c }}">{{ c }}</option>
+          {% endfor %}
+        </optgroup>
+      </select>
+    </div>
+    <div class="edit-rule-field">
+      <label>subcategory <span class="muted">(optional)</span></label>
+      <input type="text" id="er-subcategory" class="edit-rule-input">
+    </div>
+    <div class="edit-rule-field" style="flex-direction:row;align-items:center;gap:10px;">
+      <input type="checkbox" id="er-exclude" style="width:auto;margin:0;">
+      <label for="er-exclude" style="margin:0;">Exclude from P&amp;L</label>
+    </div>
+
+    <div id="edit-rule-error" style="color:var(--red);font-size:13px;margin-top:8px;display:none;"></div>
+
+    <div style="display:flex;gap:12px;margin-top:20px;">
+      <button class="btn btn-approve" style="flex:1;" onclick="saveEditRule()">Save changes</button>
+      <button class="btn btn-dismiss" style="flex:1;" onclick="closeEditRule()">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -388,6 +447,107 @@
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
     });
   })();
+
+  // ── Edit / Delete rules ─────────────────────────────────────────────────
+  var _editRuleId = null;
+
+  function openEditRule(btn) {
+    var rule = JSON.parse(btn.dataset.rule);
+    _editRuleId = rule.id;
+
+    document.getElementById('er-description').value = rule.description || '';
+    document.getElementById('er-vendor').value       = rule.match.vendor_name_contains || '';
+    document.getElementById('er-account').value      = rule.match.account_type || '';
+    document.getElementById('er-category').value     = rule.apply.category || '';
+    document.getElementById('er-subcategory').value  = rule.apply.subcategory || '';
+    document.getElementById('er-exclude').checked    = !!rule.apply.exclude_from_pnl;
+    document.getElementById('edit-rule-error').style.display = 'none';
+
+    document.getElementById('editRuleOverlay').style.display = 'flex';
+  }
+
+  function closeEditRule() {
+    document.getElementById('editRuleOverlay').style.display = 'none';
+    _editRuleId = null;
+  }
+
+  async function saveEditRule() {
+    var errEl = document.getElementById('edit-rule-error');
+    errEl.style.display = 'none';
+
+    var vendor = document.getElementById('er-vendor').value.trim().toLowerCase();
+    var category = document.getElementById('er-category').value;
+    if (!vendor) { errEl.textContent = 'vendor_name_contains is required.'; errEl.style.display = 'block'; return; }
+    if (!category) { errEl.textContent = 'Category is required.'; errEl.style.display = 'block'; return; }
+
+    var account  = document.getElementById('er-account').value;
+    var subcat   = document.getElementById('er-subcategory').value.trim();
+    var exclude  = document.getElementById('er-exclude').checked;
+
+    var rule = {
+      description: document.getElementById('er-description').value.trim(),
+      match: { vendor_name_contains: vendor, ...(account ? { account_type: account } : {}) },
+      apply: { category, ...(subcat ? { subcategory: subcat } : {}), exclude_from_pnl: exclude },
+    };
+
+    var saveBtn = document.querySelector('#editRuleOverlay .btn-approve');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+
+    try {
+      var res = await fetch('/rules/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: _editRuleId, rule }),
+      });
+      var data = await res.json();
+      if (data.status === 'ok') {
+        closeEditRule();
+        // Reload to reflect updated table row
+        window.location.reload();
+      } else {
+        errEl.textContent = data.error || 'Failed to save.';
+        errEl.style.display = 'block';
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save changes';
+      }
+    } catch (e) {
+      errEl.textContent = 'Network error: ' + e.message;
+      errEl.style.display = 'block';
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save changes';
+    }
+  }
+
+  async function deleteRule(btn) {
+    var ruleId = btn.dataset.id;
+    if (!confirm('Delete rule ' + ruleId + '? This cannot be undone (though rules.json is archived first).')) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Deleting…';
+
+    try {
+      var res = await fetch('/rules/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: ruleId }),
+      });
+      var data = await res.json();
+      if (data.status === 'ok') {
+        var row = document.getElementById('rule-row-' + ruleId);
+        if (row) { row.style.opacity = '0.4'; row.style.pointerEvents = 'none'; }
+        btn.textContent = 'Deleted';
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'Delete';
+        alert(data.error || 'Failed to delete rule.');
+      }
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Delete';
+      alert('Network error: ' + e.message);
+    }
+  }
 
 </script>
 {% endblock %}

@@ -1056,6 +1056,54 @@ a:hover { text-decoration: underline; }
   border-top: 1px solid var(--border);
 }
 
+/* ---- Active rules — edit/delete actions ---- */
+.rule-actions-cell { white-space: nowrap; }
+.btn-edit-rule {
+  background: var(--blue-light);
+  color: var(--blue);
+  border: 1px solid var(--blue);
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-right: 4px;
+}
+.btn-edit-rule:hover { opacity: 0.82; }
+.btn-delete-rule {
+  background: var(--red-light);
+  color: var(--red);
+  border: 1px solid var(--red);
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.btn-delete-rule:hover { opacity: 0.82; }
+
+/* ---- Edit rule modal form ---- */
+.edit-rule-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.edit-rule-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.edit-rule-input {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  width: 100%;
+}
+.edit-rule-input:focus { outline: 2px solid var(--teal); border-color: transparent; }
+
 .login-box button:hover { opacity: 0.88; }
 .error { color: var(--red); font-size: 13px; margin-bottom: 12px; }
 .login-error {

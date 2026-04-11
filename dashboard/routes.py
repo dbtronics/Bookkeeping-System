@@ -131,7 +131,13 @@ def dashboard_flagged():
 def dashboard_rules():
     rules = _load_rules()
     suggested = _load_suggested_rules()
-    return render_template("rules.html", rules=rules, suggested=suggested)
+    return render_template(
+        "rules.html",
+        rules=rules,
+        suggested=suggested,
+        business_categories=BUSINESS_CATEGORIES,
+        personal_categories=PERSONAL_CATEGORIES,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -487,4 +493,91 @@ def rules_save():
         return jsonify({"status": "ok", "rule_id": new_rule["id"], "rows_updated": rows_updated})
     except Exception as e:
         log.error("Rule save failed: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@dashboard_bp.route("/rules/update", methods=["POST"])
+@login_required
+def rules_update():
+    """Edit an existing rule in rules.json and re-apply it to master CSV.
+
+    Request:  { "id": "rule-001", "rule": { description, match, apply } }
+    Response: { "status": "ok", "rows_updated": N }
+    """
+    data      = request.get_json(silent=True) or {}
+    rule_id   = data.get("id", "").strip()
+    rule_data = data.get("rule")
+    if not rule_id or not rule_data:
+        return jsonify({"error": "Missing id or rule"}), 400
+
+    rules_path = Path(RULES_JSON)
+    try:
+        from categorizer import archive_rules
+        archive_rules()
+
+        with open(rules_path, encoding="utf-8") as f:
+            doc = json.load(f)
+
+        matched = False
+        for i, r in enumerate(doc["rules"]):
+            if r["id"] == rule_id:
+                doc["rules"][i] = {
+                    "id":          rule_id,
+                    "description": rule_data.get("description", ""),
+                    "match":       rule_data.get("match", {}),
+                    "apply":       rule_data.get("apply", {}),
+                }
+                updated_rule = doc["rules"][i]
+                matched = True
+                break
+
+        if not matched:
+            return jsonify({"error": f"Rule {rule_id} not found"}), 404
+
+        doc["last_updated"] = datetime.date.today().isoformat()
+        with open(rules_path, "w", encoding="utf-8") as f:
+            json.dump(doc, f, indent=2)
+
+        rows_updated = _apply_rule_to_master(updated_rule)
+        log.info("Rule updated: %s — %d rows re-applied", rule_id, rows_updated)
+        return jsonify({"status": "ok", "rows_updated": rows_updated})
+    except Exception as e:
+        log.error("Rule update failed: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@dashboard_bp.route("/rules/delete", methods=["POST"])
+@login_required
+def rules_delete():
+    """Remove a rule from rules.json.
+
+    Request:  { "id": "rule-001" }
+    Response: { "status": "ok" }
+    """
+    data    = request.get_json(silent=True) or {}
+    rule_id = data.get("id", "").strip()
+    if not rule_id:
+        return jsonify({"error": "Missing id"}), 400
+
+    rules_path = Path(RULES_JSON)
+    try:
+        from categorizer import archive_rules
+        archive_rules()
+
+        with open(rules_path, encoding="utf-8") as f:
+            doc = json.load(f)
+
+        before = len(doc["rules"])
+        doc["rules"] = [r for r in doc["rules"] if r["id"] != rule_id]
+        if len(doc["rules"]) == before:
+            return jsonify({"error": f"Rule {rule_id} not found"}), 404
+
+        doc["last_updated"] = datetime.date.today().isoformat()
+        with open(rules_path, "w", encoding="utf-8") as f:
+            json.dump(doc, f, indent=2)
+
+        log.info("Rule deleted: %s", rule_id)
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        log.error("Rule delete failed: %s", e)
         return jsonify({"error": str(e)}), 500
