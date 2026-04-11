@@ -369,6 +369,13 @@
       pairs.forEach(function(pair, i) {
         var div = document.createElement('div');
         div.className = 'pt-pair';
+        function ptAccountTag(p) {
+          var parts = [];
+          if (p.account) parts.push(p.account);
+          if (p.card)    parts.push(p.card);
+          if (p.bank)    parts.push(p.bank);
+          return parts.length ? '<span class="pt-acct">' + escHtml(parts.join(' · ')) + '</span>' : '';
+        }
         div.innerHTML =
           '<label class="pt-pair-label">' +
             '<input type="checkbox" class="pt-check" data-in="' + pair.in.id + '" data-out="' + pair.out.id + '" checked>' +
@@ -377,12 +384,14 @@
                 '<span class="pt-badge pt-in">IN</span>' +
                 '<span class="pt-date mono">' + pair.in.date + '</span>' +
                 '<span class="pt-vendor">' + escHtml(pair.in.vendor) + '</span>' +
+                ptAccountTag(pair.in) +
                 '<span class="pt-amount positive">+$' + Math.abs(pair.in.amount).toLocaleString('en-CA', {minimumFractionDigits:2}) + '</span>' +
               '</div>' +
               '<div class="pt-pair-row">' +
                 '<span class="pt-badge pt-out">OUT</span>' +
                 '<span class="pt-date mono">' + pair.out.date + '</span>' +
                 '<span class="pt-vendor">' + escHtml(pair.out.vendor) + '</span>' +
+                ptAccountTag(pair.out) +
                 '<span class="pt-amount negative">−$' + Math.abs(pair.out.amount).toLocaleString('en-CA', {minimumFractionDigits:2}) + '</span>' +
               '</div>' +
             '</div>' +

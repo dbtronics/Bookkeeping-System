@@ -993,6 +993,7 @@ a:hover { text-decoration: underline; }
 .pt-out { background: rgba(229,115,115,0.15); color: var(--red);  }
 .pt-date   { color: var(--muted); flex-shrink: 0; }
 .pt-vendor { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-acct   { flex-shrink: 0; font-size: 11px; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
 .pt-amount { flex-shrink: 0; font-family: 'DM Mono', monospace; font-weight: 600; }
 
 /* Recategorize modal overlay */

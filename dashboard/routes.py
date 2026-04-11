@@ -721,10 +721,13 @@ def passthrough_scan():
             except ValueError:
                 amt = 0.0
             return {
-                "id":     r.get("transaction_id", ""),
-                "date":   r.get("date", ""),
-                "vendor": r.get("vendor_name") or r.get("description", ""),
-                "amount": round(amt, 2),
+                "id":       r.get("transaction_id", ""),
+                "date":     r.get("date", ""),
+                "vendor":   r.get("vendor_name") or r.get("description", ""),
+                "amount":   round(amt, 2),
+                "account":  r.get("account_type", ""),
+                "card":     r.get("card_type", ""),
+                "bank":     r.get("bank_name", ""),
             }
 
         result = [{"in": _fmt(p["in"]), "out": _fmt(p["out"])} for p in pairs]
