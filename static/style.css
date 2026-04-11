@@ -1219,6 +1219,7 @@ a:hover { text-decoration: underline; }
   transition: opacity 0.15s, color 0.15s;
 }
 .cat-txn-row:hover .btn-txn-edit { opacity: 1; }
+.btn-txn-edit-table { opacity: 1; }
 .btn-txn-edit:hover { color: var(--teal); }
 
 /* Transaction info in edit modal */
