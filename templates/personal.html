@@ -150,22 +150,49 @@
   <div id="view-categories" style="display:none;">
     <div class="cat-tree">
       {% for cat in categories_tree %}
-      <div class="cat-row{% if cat.subcategories %} cat-has-children{% endif %}">
-        <div class="cat-header{% if cat.subcategories %} cat-expandable{% endif %}"
-             {% if cat.subcategories %}onclick="toggleCat(this)"{% endif %}>
+      {% set cat_expandable = cat.subcategories or cat.transactions %}
+      <div class="cat-row">
+        <div class="cat-header{% if cat_expandable %} cat-expandable{% endif %}"
+             {% if cat_expandable %}onclick="toggleCat(this)"{% endif %}>
+          <span class="cat-chevron{% if not cat_expandable %} cat-chevron-hidden{% endif %}">&#8250;</span>
           <span class="cat-name">{{ cat.name }}</span>
-          {% if cat.subcategories %}<span class="cat-chevron">&#8250;</span>{% endif %}
           <span class="cat-total {% if cat.total >= 0 %}positive{% else %}negative{% endif %}">
             {% if cat.total >= 0 %}+{% endif %}${{ "{:,.2f}".format(cat.total|abs) }}
           </span>
         </div>
-        {% if cat.subcategories %}
+        {% if cat_expandable %}
         <div class="cat-children">
           {% for sub in cat.subcategories %}
-          <div class="cat-subrow">
-            <span class="cat-subname">{{ sub.name }}</span>
-            <span class="cat-total {% if sub.total >= 0 %}positive{% else %}negative{% endif %}">
-              {% if sub.total >= 0 %}+{% endif %}${{ "{:,.2f}".format(sub.total|abs) }}
+          <div class="cat-subgroup">
+            <div class="cat-subheader{% if sub.transactions %} cat-expandable{% endif %}"
+                 {% if sub.transactions %}onclick="toggleSubcat(this)"{% endif %}>
+              <span class="cat-chevron{% if not sub.transactions %} cat-chevron-hidden{% endif %}">&#8250;</span>
+              <span class="cat-subname">{{ sub.name }}</span>
+              <span class="cat-total {% if sub.total >= 0 %}positive{% else %}negative{% endif %}">
+                {% if sub.total >= 0 %}+{% endif %}${{ "{:,.2f}".format(sub.total|abs) }}
+              </span>
+            </div>
+            {% if sub.transactions %}
+            <div class="cat-txn-list">
+              {% for t in sub.transactions %}
+              <div class="cat-txn-row">
+                <span class="cat-txn-date mono">{{ t.date }}</span>
+                <span class="cat-txn-vendor">{{ t.vendor }}</span>
+                <span class="cat-txn-amount {% if t.amount >= 0 %}positive{% else %}negative{% endif %}">
+                  {% if t.amount >= 0 %}+{% endif %}${{ "{:,.2f}".format(t.amount|abs) }}
+                </span>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+          {% for t in cat.transactions %}
+          <div class="cat-txn-row cat-txn-direct">
+            <span class="cat-txn-date mono">{{ t.date }}</span>
+            <span class="cat-txn-vendor">{{ t.vendor }}</span>
+            <span class="cat-txn-amount {% if t.amount >= 0 %}positive{% else %}negative{% endif %}">
+              {% if t.amount >= 0 %}+{% endif %}${{ "{:,.2f}".format(t.amount|abs) }}
             </span>
           </div>
           {% endfor %}
@@ -200,12 +227,21 @@
   }
 
   function toggleCat(header) {
-    var row = header.closest('.cat-row');
+    var row      = header.closest('.cat-row');
     var children = row.querySelector('.cat-children');
     var chevron  = header.querySelector('.cat-chevron');
-    var open = row.classList.toggle('cat-open');
+    var open     = row.classList.toggle('cat-open');
     if (children) children.style.display = open ? 'block' : 'none';
     if (chevron)  chevron.style.transform = open ? 'rotate(90deg)' : '';
+  }
+
+  function toggleSubcat(header) {
+    var group    = header.closest('.cat-subgroup');
+    var list     = group.querySelector('.cat-txn-list');
+    var chevron  = header.querySelector('.cat-chevron');
+    var open     = group.classList.toggle('cat-open');
+    if (list)    list.style.display      = open ? 'block' : 'none';
+    if (chevron) chevron.style.transform = open ? 'rotate(90deg)' : '';
   }
 </script>
 {% endblock %}

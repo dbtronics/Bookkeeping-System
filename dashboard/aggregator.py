@@ -235,28 +235,44 @@ def _sort_dict(d, top=None):
 
 
 def _build_categories_tree(rows):
-    """Build [{name, total, subcategories:[{name, total}]}] sorted by abs total.
+    """Build [{name, total, subcategories, transactions}] sorted by abs total.
 
-    Includes all rows (income + expenses). Sign is preserved so the template
-    can colour income green and expenses red.
+    Each subcategory includes its individual transactions.
+    Transactions that have no subcategory are attached directly to the category.
+    Sign is preserved so the template can colour income green, expenses red.
     """
-    cat_totals = defaultdict(float)
-    subcat_totals = defaultdict(lambda: defaultdict(float))
+    cat_totals     = defaultdict(float)
+    subcat_totals  = defaultdict(lambda: defaultdict(float))
+    cat_direct     = defaultdict(list)   # transactions without a subcategory
+    subcat_txns    = defaultdict(lambda: defaultdict(list))
 
     for r in rows:
         cat    = r.get("category") or "Uncategorized"
         subcat = (r.get("subcategory") or "").strip()
         amt    = _amount(r)
         cat_totals[cat] += amt
+        txn = {
+            "date":   r.get("date", ""),
+            "vendor": r.get("vendor_name") or r.get("description", ""),
+            "amount": round(amt, 2),
+        }
         if subcat:
             subcat_totals[cat][subcat] += amt
+            subcat_txns[cat][subcat].append(txn)
+        else:
+            cat_direct[cat].append(txn)
 
     result = []
     for cat, total in sorted(cat_totals.items(), key=lambda x: abs(x[1]), reverse=True):
-        subcats = sorted(
-            [{"name": s, "total": round(t, 2)} for s, t in subcat_totals[cat].items()],
-            key=lambda x: abs(x["total"]),
-            reverse=True,
-        )
-        result.append({"name": cat, "total": round(total, 2), "subcategories": subcats})
+        subcats = []
+        for sub, sub_total in sorted(subcat_totals[cat].items(), key=lambda x: abs(x[1]), reverse=True):
+            txns = sorted(subcat_txns[cat][sub], key=lambda x: x["date"], reverse=True)
+            subcats.append({"name": sub, "total": round(sub_total, 2), "transactions": txns})
+        direct = sorted(cat_direct[cat], key=lambda x: x["date"], reverse=True)
+        result.append({
+            "name":           cat,
+            "total":          round(total, 2),
+            "subcategories":  subcats,
+            "transactions":   direct,
+        })
     return result

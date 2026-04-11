@@ -1152,37 +1152,58 @@ a:hover { text-decoration: underline; }
 .cat-tree { padding: 0 0 8px; }
 .cat-row { border-bottom: 1px solid var(--border); }
 .cat-row:last-child { border-bottom: none; }
-.cat-header {
+
+.cat-header, .cat-subheader {
   display: flex;
   align-items: center;
-  padding: 10px 16px;
   gap: 8px;
 }
+.cat-header { padding: 10px 16px; }
 .cat-header.cat-expandable { cursor: pointer; }
 .cat-header.cat-expandable:hover { background: var(--bg); }
-.cat-name { font-weight: 600; font-size: 14px; flex: 1; }
+
 .cat-chevron {
-  font-size: 15px;
+  font-size: 14px;
   color: var(--muted);
   transition: transform 0.2s ease;
   display: inline-block;
+  flex-shrink: 0;
+  width: 14px;
 }
-.cat-total { font-family: 'DM Mono', monospace; font-size: 14px; font-weight: 600; }
+.cat-chevron-hidden { visibility: hidden; }
+
+.cat-name  { font-weight: 600; font-size: 14px; flex: 1; }
+.cat-total { font-family: 'DM Mono', monospace; font-size: 14px; font-weight: 600; flex-shrink: 0; }
+
+/* Category children area */
 .cat-children { display: none; background: var(--bg); border-top: 1px solid var(--border); }
-.cat-subrow {
+
+/* Subcategory group */
+.cat-subgroup { border-bottom: 1px solid var(--border); }
+.cat-subgroup:last-child { border-bottom: none; }
+.cat-subheader {
+  padding: 8px 16px 8px 24px;
+  cursor: default;
+}
+.cat-subheader.cat-expandable { cursor: pointer; }
+.cat-subheader.cat-expandable:hover { background: color-mix(in srgb, var(--bg) 60%, var(--border)); }
+.cat-subname { flex: 1; font-size: 13px; color: var(--text); }
+.cat-subheader .cat-total { font-size: 13px; }
+
+/* Transaction rows inside subcategories / categories */
+.cat-txn-list { display: none; }
+.cat-txn-row {
   display: flex;
   align-items: center;
-  padding: 7px 16px 7px 36px;
-  border-bottom: 1px solid var(--border);
-  gap: 8px;
+  gap: 12px;
+  padding: 6px 16px 6px 48px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
 }
-.cat-subrow:last-child { border-bottom: none; }
-.cat-subname {
-  flex: 1;
-  font-size: 13px;
-  color: var(--muted);
-}
-.cat-subrow .cat-total { font-size: 13px; }
+.cat-txn-direct { padding-left: 38px; }
+.cat-txn-date   { color: var(--muted); flex-shrink: 0; width: 88px; }
+.cat-txn-vendor { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-txn-amount { flex-shrink: 0; font-family: 'DM Mono', monospace; font-weight: 600; }
 
 .login-box button:hover { opacity: 0.88; }
 .error { color: var(--red); font-size: 13px; margin-bottom: 12px; }
