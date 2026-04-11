@@ -160,5 +160,242 @@
     })();
   </script>
   {% block scripts %}{% endblock %}
+
+  <!-- ── Global: Pass-through check modal (available on all pages) ── -->
+  <div id="ptCheckOverlay" class="recat-overlay" style="display:none;">
+    <div class="recat-modal" style="width:540px;max-width:95vw;">
+
+      <div id="ptCheckSpinner">
+        <p class="muted" style="text-align:center;padding:24px 0;">Checking transaction…</p>
+      </div>
+
+      <div id="ptCheckResult" style="display:none;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+          <h3 style="margin:0;flex:1;">Pass-through Check</h3>
+          <span id="ptCheckBadge" class="pill"></span>
+        </div>
+
+        <!-- The transaction being checked -->
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Selected transaction</div>
+        <div id="ptCheckTxn" class="ptc-txn-row"></div>
+
+        <!-- Candidates list (radio selection) -->
+        <div id="ptCheckCandidatesWrap" style="display:none;margin-top:16px;">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em;">Select the matching transaction</div>
+          <div id="ptCheckCandidates" style="display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;padding-right:2px;"></div>
+        </div>
+
+        <!-- No match message -->
+        <div id="ptCheckNoMatchMsg" style="display:none;margin-top:14px;">
+          <div id="ptCheckNoMatchReason" class="ptc-reason"></div>
+        </div>
+
+        <!-- Actions -->
+        <div id="ptCheckActions" style="display:none;margin-top:20px;display:flex;gap:10px;">
+          <button class="btn btn-approve" style="flex:1;" id="ptCheckApplyBtn" onclick="applyPtCheck()" disabled>Apply</button>
+          <button class="btn btn-dismiss" style="flex:1;" onclick="closePtCheck()">Cancel</button>
+        </div>
+        <div id="ptCheckNoMatch" style="display:none;margin-top:16px;">
+          <button class="btn btn-dismiss" style="width:100%;" onclick="closePtCheck()">Close</button>
+        </div>
+      </div>
+
+      <div id="ptCheckDone" style="display:none;text-align:center;padding:8px 0;">
+        <div style="font-size:28px;margin-bottom:12px;">✓</div>
+        <div id="ptCheckDoneMsg" class="recat-stats" style="margin-bottom:20px;text-align:left;"></div>
+        <button class="btn btn-approve" style="width:100%;" onclick="closePtCheckAndReload()">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    var _ptCheckData = {};
+
+    function openPtCheck(btn) {
+      _ptCheckData = {};
+      var tid = btn.dataset.id
+             || (function() {
+                  var row = btn.closest('[data-txn]');
+                  if (!row) return '';
+                  try { return JSON.parse(row.dataset.txn).id || ''; } catch(e) { return ''; }
+                })();
+      if (!tid) { alert('Could not determine transaction ID.'); return; }
+
+      document.getElementById('ptCheckSpinner').style.display        = 'block';
+      document.getElementById('ptCheckResult').style.display         = 'none';
+      document.getElementById('ptCheckDone').style.display           = 'none';
+      document.getElementById('ptCheckOverlay').style.display        = 'flex';
+
+      fetch('/passthrough/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transaction_id: tid }),
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (d.error) { alert('Error: ' + d.error); closePtCheck(); return; }
+          _ptCheckData = d;
+          renderPtCheck(d);
+        })
+        .catch(function(e) { alert('Network error: ' + e.message); closePtCheck(); });
+    }
+
+    function _ptFmtRow(t) {
+      var sign = t.amount >= 0 ? '+' : '−';
+      var cls  = t.amount >= 0 ? 'positive' : 'negative';
+      var acct = t.account
+        ? '<span class="pill ' + (t.account === 'business' ? 'teal' : 'purple') + '" style="font-size:11px;">' + t.account + '</span>'
+        : '';
+      return '<div class="ptc-txn-inner">'
+        + '<span class="mono muted" style="font-size:12px;">' + _ptEsc(t.date) + '</span>'
+        + '<span class="ptc-vendor">' + _ptEsc(t.vendor) + '</span>'
+        + acct
+        + '<span class="mono ' + cls + '" style="font-size:13px;">' + sign + '$'
+            + Math.abs(t.amount).toLocaleString('en-CA', {minimumFractionDigits:2}) + '</span>'
+        + '<span class="muted" style="font-size:11px;">' + _ptEsc(t.category) + '</span>'
+        + '</div>';
+    }
+
+    var _typeLabels = {
+      internal:    'Internal Transfer',
+      owner_draw:  "Owner's Draw",
+      passthrough: 'Pass-through',
+    };
+    var _typeColors = {
+      internal:    'grey',
+      owner_draw:  'teal',
+      passthrough: 'grey',
+    };
+    var _applyLabels = {
+      internal:    'Apply — mark both as Internal Transfer',
+      owner_draw:  "Apply — classify as Owner's Draw",
+      passthrough: 'Apply — mark both as Pass-through',
+    };
+
+    function renderPtCheck(d) {
+      // Header badge — reflects overall result
+      var badge = document.getElementById('ptCheckBadge');
+      if (d.qualifies && d.type && _typeLabels[d.type]) {
+        badge.textContent = d.candidates.length + ' candidate' + (d.candidates.length !== 1 ? 's' : '') + ' found';
+        badge.className   = 'pill ' + _typeColors[d.type];
+      } else {
+        badge.textContent = 'No match';
+        badge.className   = 'pill red';
+      }
+
+      document.getElementById('ptCheckTxn').innerHTML = _ptFmtRow(d.transaction);
+
+      var candidatesWrap = document.getElementById('ptCheckCandidatesWrap');
+      var candidatesList = document.getElementById('ptCheckCandidates');
+      var noMatchMsg     = document.getElementById('ptCheckNoMatchMsg');
+      var actions        = document.getElementById('ptCheckActions');
+      var noMatchClose   = document.getElementById('ptCheckNoMatch');
+      var applyBtn       = document.getElementById('ptCheckApplyBtn');
+
+      if (d.qualifies && d.candidates && d.candidates.length > 0) {
+        // Build candidate radio cards
+        candidatesList.innerHTML = '';
+        d.candidates.forEach(function(c, i) {
+          var card = document.createElement('label');
+          card.className = 'ptc-candidate-card';
+          card.setAttribute('for', 'ptcRadio' + i);
+
+          var typePill = '<span class="pill ' + (_typeColors[c.type] || 'grey') + '" style="font-size:10px;margin-left:6px;">'
+            + _ptEsc(_typeLabels[c.type] || c.type) + '</span>';
+
+          var reasonsHtml = (c.reasons || [])
+            .map(function(r) { return '<div class="ptc-reason" style="margin-top:4px;">' + _ptEsc(r) + '</div>'; })
+            .join('');
+
+          card.innerHTML =
+            '<div style="display:flex;align-items:flex-start;gap:10px;">'
+            + '<input type="radio" name="ptcCandidate" id="ptcRadio' + i + '" value="' + i + '" style="margin-top:3px;flex-shrink:0;">'
+            + '<div style="flex:1;min-width:0;">'
+            +   _ptFmtRow(c) + typePill
+            +   reasonsHtml
+            + '</div>'
+            + '</div>';
+
+          card.addEventListener('click', function() {
+            onCandidateSelect();
+          });
+
+          candidatesList.appendChild(card);
+        });
+
+        candidatesWrap.style.display = 'block';
+        noMatchMsg.style.display     = 'none';
+        actions.style.display        = 'flex';
+        noMatchClose.style.display   = 'none';
+        applyBtn.disabled            = true;   // until user picks one
+        applyBtn.textContent         = 'Apply';
+      } else {
+        // No candidates
+        var reasons = d.reasons || ['No matching transaction found.'];
+        document.getElementById('ptCheckNoMatchReason').textContent = reasons[0];
+        candidatesWrap.style.display = 'none';
+        noMatchMsg.style.display     = 'block';
+        actions.style.display        = 'none';
+        noMatchClose.style.display   = 'block';
+      }
+
+      document.getElementById('ptCheckSpinner').style.display = 'none';
+      document.getElementById('ptCheckResult').style.display  = 'block';
+    }
+
+    function onCandidateSelect() {
+      var selected = document.querySelector('input[name="ptcCandidate"]:checked');
+      var applyBtn = document.getElementById('ptCheckApplyBtn');
+      if (!selected) { applyBtn.disabled = true; return; }
+      var c = _ptCheckData.candidates[parseInt(selected.value, 10)];
+      applyBtn.disabled    = false;
+      applyBtn.textContent = _applyLabels[c.type] || 'Apply';
+    }
+
+    // Also wire up radio change via event delegation (in case label click fires before radio updates)
+    document.addEventListener('change', function(e) {
+      if (e.target && e.target.name === 'ptcCandidate') onCandidateSelect();
+    });
+
+    function applyPtCheck() {
+      var selected = document.querySelector('input[name="ptcCandidate"]:checked');
+      if (!selected) return;
+      var c        = _ptCheckData.candidates[parseInt(selected.value, 10)];
+      var d        = _ptCheckData;
+      var applyBtn = document.getElementById('ptCheckApplyBtn');
+      applyBtn.disabled    = true;
+      applyBtn.textContent = 'Applying…';
+
+      var ids  = [d.transaction.id, c.id].filter(Boolean);
+      var body = c.type === 'owner_draw'
+        ? { owner_draw_ids: ids }
+        : { passthrough_ids: ids };
+
+      fetch('/passthrough/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+          if (res.error) {
+            alert('Error: ' + res.error);
+            applyBtn.disabled = false; applyBtn.textContent = _applyLabels[c.type] || 'Apply';
+            return;
+          }
+          var msg = '';
+          if (res.passthrough_updated) msg += '<div class="recat-result-row"><span>Pass-through transactions excluded</span><strong>' + res.passthrough_updated + '</strong></div>';
+          if (res.owner_draw_updated)  msg += '<div class="recat-result-row"><span>Owner\'s draw transactions classified</span><strong>' + res.owner_draw_updated + '</strong></div>';
+          document.getElementById('ptCheckDoneMsg').innerHTML = msg;
+          document.getElementById('ptCheckResult').style.display = 'none';
+          document.getElementById('ptCheckDone').style.display   = 'block';
+        })
+        .catch(function(e) { alert('Network error: ' + e.message); applyBtn.disabled = false; applyBtn.textContent = _applyLabels[c.type] || 'Apply'; });
+    }
+
+    function closePtCheck()          { document.getElementById('ptCheckOverlay').style.display = 'none'; }
+    function closePtCheckAndReload() { closePtCheck(); window.location.reload(); }
+    function _ptEsc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  </script>
 </body>
 </html>

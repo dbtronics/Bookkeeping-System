@@ -52,6 +52,7 @@
               <span class="bar-drill-vendor" title="{{ t.description }}">{{ t.display or t.vendor or t.description }}</span>
               <span class="mono positive">+${{ "{:,.2f}".format(t.amount|abs) }}</span>
               <button class="btn-txn-edit" data-txn='{{ td | tojson }}' onclick="openTxnEdit(this)" title="Edit">&#9998;</button>
+              <button class="btn-pt-check" data-id="{{ t.id }}" onclick="openPtCheck(this)" title="Check pass-through">&#8652;</button>
             </div>
             {% endfor %}
           </div>
@@ -92,6 +93,7 @@
               <span class="bar-drill-vendor" title="{{ t.description }}">{{ t.display or t.vendor or t.description }}</span>
               <span class="mono negative">−${{ "{:,.2f}".format(t.amount|abs) }}</span>
               <button class="btn-txn-edit" data-txn='{{ td | tojson }}' onclick="openTxnEdit(this)" title="Edit">&#9998;</button>
+              <button class="btn-pt-check" data-id="{{ t.id }}" onclick="openPtCheck(this)" title="Check pass-through">&#8652;</button>
             </div>
             {% endfor %}
           </div>
@@ -134,6 +136,7 @@
             <span class="bar-drill-vendor" title="{{ t.description }}">{{ t.display or t.vendor or t.description }}</span>
             <span class="mono negative">−${{ "{:,.2f}".format(t.amount|abs) }}</span>
             <button class="btn-txn-edit" data-txn='{{ td | tojson }}' onclick="openTxnEdit(this)" title="Edit">&#9998;</button>
+            <button class="btn-pt-check" data-id="{{ t.id }}" onclick="openPtCheck(this)" title="Check pass-through">&#8652;</button>
           </div>
           {% endfor %}
         </div>
@@ -184,8 +187,9 @@
             <td class="num mono {% if t.amount|float >= 0 %}positive{% else %}negative{% endif %}">
               {% if t.amount|float >= 0 %}+{% endif %}${{ "{:,.2f}".format(t.amount|float|abs) }}
             </td>
-            <td>
+            <td style="white-space:nowrap;">
               <button class="btn-txn-edit btn-txn-edit-table" data-txn='{{ txn_data | tojson }}' onclick="openTxnEdit(this)" title="Edit category">&#9998;</button>
+              <button class="btn-pt-check" data-id="{{ t.transaction_id }}" onclick="openPtCheck(this)" title="Check pass-through">&#8652;</button>
             </td>
           </tr>
           {% else %}
@@ -232,6 +236,7 @@
                   {% if t.amount >= 0 %}+{% endif %}${{ "{:,.2f}".format(t.amount|abs) }}
                 </span>
                 <button class="btn-txn-edit" onclick="openTxnEdit(this)" title="Edit category">&#9998;</button>
+                <button class="btn-pt-check" onclick="openPtCheck(this)" title="Check pass-through">&#8652;</button>
               </div>
               {% endfor %}
             </div>
@@ -246,6 +251,7 @@
               {% if t.amount >= 0 %}+{% endif %}${{ "{:,.2f}".format(t.amount|abs) }}
             </span>
             <button class="btn-txn-edit" onclick="openTxnEdit(this)" title="Edit category">&#9998;</button>
+            <button class="btn-pt-check" onclick="openPtCheck(this)" title="Check pass-through">&#8652;</button>
           </div>
           {% endfor %}
         </div>
@@ -410,6 +416,13 @@
           create_rule:    makeRule && scope === 'all',
         }),
       });
+      if (res.redirected) {
+        errEl.textContent = 'Session expired — please reload the page and log in again.';
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = scope === 'single' ? 'Save for this transaction only' : 'Save for all similar transactions';
+        return;
+      }
       var data = await res.json();
       if (data.status === 'ok') {
         var n   = data.updated || 0;

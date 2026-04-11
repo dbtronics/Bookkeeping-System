@@ -407,7 +407,7 @@ a:hover { text-decoration: underline; }
 
 .bar-drill-row {
   display: grid;
-  grid-template-columns: 86px 1fr auto 28px;
+  grid-template-columns: 86px 1fr auto 28px 28px;
   align-items: center;
   gap: 8px;
   padding: 5px 2px;
@@ -1162,6 +1162,75 @@ a:hover { text-decoration: underline; }
 }
 .kw-remove:hover { color: var(--red); }
 
+/* ---- Pass-through check button ---- */
+.btn-pt-check {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+tr:hover .btn-pt-check { opacity: 1; }
+.btn-pt-check:hover { color: var(--purple); }
+
+/* ---- Pass-through check modal ---- */
+.ptc-txn-row {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.ptc-txn-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ptc-vendor {
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ptc-reason {
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  border-left: 3px solid var(--border);
+  padding: 6px 10px;
+  border-radius: 0 6px 6px 0;
+  line-height: 1.5;
+}
+
+/* Candidate selection cards */
+.ptc-candidate-card {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+  background: var(--surface);
+}
+.ptc-candidate-card:hover {
+  border-color: var(--teal);
+  background: var(--bg);
+}
+.ptc-candidate-card:has(input:checked) {
+  border-color: var(--teal);
+  background: var(--bg);
+  box-shadow: 0 0 0 2px rgba(0,180,150,.15);
+}
+.ptc-candidate-card .ptc-reason {
+  background: transparent;
+  border-left-color: var(--teal);
+}
+
 /* ---- Ledger page ------------------------------------------ */
 .ledger-filters {
   display: flex;
@@ -1482,8 +1551,10 @@ a:hover { text-decoration: underline; }
   opacity: 0;
   transition: opacity 0.15s, color 0.15s;
 }
-.cat-txn-row:hover .btn-txn-edit { opacity: 1; }
-.bar-drill-row:hover .btn-txn-edit { opacity: 1; }
+.cat-txn-row:hover .btn-txn-edit,
+.cat-txn-row:hover .btn-pt-check { opacity: 1; }
+.bar-drill-row:hover .btn-txn-edit,
+.bar-drill-row:hover .btn-pt-check { opacity: 1; }
 .btn-txn-edit-table { opacity: 1; }
 .btn-txn-edit:hover { color: var(--teal); }
 

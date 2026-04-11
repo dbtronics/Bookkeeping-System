@@ -14,7 +14,7 @@ from config import (
     NL_MODELS, NL_DEFAULT_MODEL, NL_MODEL_PRICING, USD_TO_CAD,
     BUSINESS_CATEGORIES, PERSONAL_CATEGORIES,
     PASSTHROUGH_TOLERANCE, PASSTHROUGH_WINDOW_DAYS,
-    EXCLUDE_FROM_PNL_CATEGORIES,
+    EXCLUDE_FROM_PNL_CATEGORIES, MASTER_TRANSACTIONS_CSV,
 )
 from dashboard.aggregator import get_overview, get_business, get_personal, get_flagged, get_ledger, detect_passthrough_pairs, scan_transactions
 
@@ -934,4 +934,186 @@ def passthrough_apply():
 
     except Exception as e:
         log.error("Passthrough apply failed: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@dashboard_bp.route("/passthrough/check", methods=["POST"])
+@login_required
+def passthrough_check():
+    """Check whether a single transaction qualifies as part of a pass-through pair.
+
+    Request:  { "transaction_id": "TXN-..." }
+    Response: {
+      "status":      "ok",
+      "qualifies":   bool,
+      "type":        "internal" | "owner_draw" | "passthrough" | null,
+      "transaction": { id, date, vendor, amount, account, category },
+      "match":       { id, date, vendor, amount, account, category } | null,
+      "reasons":     ["...", ...],
+    }
+    """
+    import csv as csv_mod
+    from datetime import datetime as dt
+    from config import MASTER_TRANSACTIONS_CSV, PASSTHROUGH_TOLERANCE, PASSTHROUGH_WINDOW_DAYS
+    from dashboard.aggregator import _load_transfer_keywords
+
+    data = request.get_json(silent=True) or {}
+    tid  = data.get("transaction_id", "").strip()
+    if not tid:
+        return jsonify({"error": "transaction_id required"}), 400
+
+    tolerance   = PASSTHROUGH_TOLERANCE
+    window_days = PASSTHROUGH_WINDOW_DAYS
+
+    path = Path(MASTER_TRANSACTIONS_CSV)
+    if not path.exists():
+        return jsonify({"error": "master_transactions.csv not found"}), 500
+
+    try:
+        with open(path, newline="", encoding="utf-8") as f:
+            rows = list(csv_mod.DictReader(f))
+
+        # Find the target transaction
+        target = next((r for r in rows if r.get("transaction_id") == tid), None)
+        if not target:
+            return jsonify({"error": f"Transaction {tid} not found"}), 404
+
+        keywords = _load_transfer_keywords()
+        kw_lower = [k.lower() for k in keywords]
+
+        def is_internal(row):
+            desc = row.get("description", "").lower()
+            return any(k in desc for k in kw_lower)
+
+        def parse_date(row):
+            try:
+                return dt.strptime(row["date"], "%Y-%m-%d")
+            except (ValueError, KeyError):
+                return None
+
+        def fmt(row):
+            try:
+                amt = float(row.get("amount", 0))
+            except ValueError:
+                amt = 0.0
+            return {
+                "id":       row.get("transaction_id", ""),
+                "date":     row.get("date", ""),
+                "vendor":   row.get("vendor_name") or row.get("description", ""),
+                "amount":   round(amt, 2),
+                "account":  row.get("account_type", ""),
+                "category": row.get("category") or "—",
+                "bank":     row.get("bank_name") or "—",
+            }
+
+        try:
+            t_amt  = float(target.get("amount", 0))
+        except ValueError:
+            t_amt = 0.0
+        t_date    = parse_date(target)
+        t_internal = is_internal(target)
+
+        # Collect ALL candidate matches within tolerance/window
+        candidates = []
+
+        for row in rows:
+            if row.get("transaction_id") == tid:
+                continue
+
+            try:
+                r_amt = float(row.get("amount", 0))
+            except ValueError:
+                continue
+
+            # Must be roughly opposite direction
+            if t_amt >= 0 and r_amt >= 0:
+                continue
+            if t_amt < 0 and r_amt < 0:
+                continue
+
+            r_date = parse_date(row)
+            if r_date is None or t_date is None:
+                continue
+
+            amt_diff = abs(abs(t_amt) - abs(r_amt))
+            day_diff = abs((t_date - r_date).days)
+
+            if amt_diff <= tolerance and day_diff <= window_days:
+                candidates.append((row, amt_diff, day_diff))
+
+        # Sort by closeness (day_diff primary, amt_diff secondary)
+        candidates.sort(key=lambda x: (x[2], x[1]))
+
+        if not candidates:
+            return jsonify({
+                "status":      "ok",
+                "qualifies":   False,
+                "type":        None,
+                "transaction": fmt(target),
+                "candidates":  [],
+                "reasons":     ["No transaction found within the matching window "
+                                f"(±${tolerance:.2f}, ±{window_days} days)."],
+            })
+
+        t_acct     = target.get("account_type", "")
+
+        def build_candidate(row, amt_diff, day_diff):
+            m_internal = is_internal(row)
+            m_acct     = row.get("account_type", "")
+            r_amt_val  = float(row.get("amount", 0))
+
+            reasons = []
+            diff_str = f"${amt_diff:.2f} difference" if amt_diff > 0 else "exact amount match"
+            day_str  = f"{day_diff} day{'s' if day_diff != 1 else ''} apart" if day_diff > 0 else "same day"
+            reasons.append(f"Amount: ${abs(t_amt):,.2f} — {diff_str}, {day_str}.")
+
+            if t_internal and m_internal:
+                if t_acct != m_acct:
+                    pair_type = "owner_draw"
+                    reasons.append(
+                        f"Both legs are internal transfers but cross accounts "
+                        f"({t_acct} → {m_acct}), indicating an owner's draw."
+                    )
+                    reasons.append(
+                        "Business leg → Owner's Draw (expense). "
+                        "Personal leg → Income / Owner's Draw."
+                    )
+                else:
+                    pair_type = "internal"
+                    reasons.append(
+                        f"Both legs carry an internal transfer keyword and are in the "
+                        f"same account type ({t_acct}) — same-account internal transfer."
+                    )
+                    reasons.append("Both transactions will be excluded from P&L.")
+            else:
+                pair_type = "passthrough"
+                in_amt  = abs(t_amt) if t_amt > 0 else abs(r_amt_val)
+                out_amt = abs(r_amt_val) if t_amt > 0 else abs(t_amt)
+                in_v    = fmt(target)["vendor"] if t_amt > 0 else fmt(row)["vendor"]
+                out_v   = fmt(row)["vendor"] if t_amt > 0 else fmt(target)["vendor"]
+                reasons.append(
+                    f"Inbound ${in_amt:,.2f} from {in_v} matched by outbound "
+                    f"${out_amt:,.2f} to {out_v} — money received and forwarded on."
+                )
+                reasons.append("Both transactions will be excluded from P&L.")
+
+            return {
+                **fmt(row),
+                "type":    pair_type,
+                "reasons": reasons,
+            }
+
+        built = [build_candidate(r, a, d) for r, a, d in candidates]
+
+        return jsonify({
+            "status":      "ok",
+            "qualifies":   True,
+            "type":        built[0]["type"],   # type of top candidate (for badge)
+            "transaction": fmt(target),
+            "candidates":  built,
+            "reasons":     [],                 # per-candidate now; kept for compat
+        })
+
+    except Exception as e:
+        log.error("Passthrough check failed: %s", e)
         return jsonify({"error": str(e)}), 500

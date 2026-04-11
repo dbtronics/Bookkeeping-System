@@ -91,7 +91,7 @@
               <span class="flag-dot" title="{{ t.flag_reason or 'Flagged' }}">⚑</span>
             {% endif %}
           </td>
-          <td>
+          <td style="white-space:nowrap;">
             {% set txn_data = {
               "id": t.transaction_id,
               "date": t.date,
@@ -105,7 +105,11 @@
             <button class="btn-txn-edit btn-txn-edit-table"
                     data-txn='{{ txn_data | tojson }}'
                     onclick="openTxnEdit(this)"
-                    title="Edit">&#9998;</button>
+                    title="Edit category">&#9998;</button>
+            <button class="btn-pt-check"
+                    data-id="{{ t.transaction_id }}"
+                    onclick="openPtCheck(this)"
+                    title="Check pass-through">&#8652;</button>
           </td>
         </tr>
         {% else %}
@@ -233,6 +237,8 @@
     window.location.reload();
   }
 
+  // openPtCheck / applyPtCheck / closePtCheck defined in base.html
+
   async function saveTxnEdit() {
     var errEl  = document.getElementById('txnEditError');
     errEl.style.display = 'none';
@@ -259,6 +265,12 @@
           create_rule:    createRule,
         }),
       });
+      if (res.redirected) {
+        errEl.textContent = 'Session expired — please reload the page and log in again.';
+        errEl.style.display = 'block';
+        saveBtn.disabled = false; saveBtn.textContent = 'Save';
+        return;
+      }
       var data = await res.json();
       if (data.status === 'ok') {
         var msg = '<div class="recat-result-row"><span>Transactions updated</span><strong>' + (data.updated || 0) + '</strong></div>';
