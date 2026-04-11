@@ -170,6 +170,7 @@ def _apply_rule_to_master(rule):
     apply  = rule.get("apply", {})
     keyword      = match.get("vendor_name_contains", "").lower()
     rule_account = match.get("account_type", "")
+    rule_sign    = match.get("amount_sign", "")   # "positive" | "negative" | "" (either)
 
     updated = 0
     rows = []
@@ -180,9 +181,18 @@ def _apply_rule_to_master(rule):
     for row in rows:
         if row.get("categorized_by") == "manual":
             continue
+        try:
+            row_amount = float(row.get("amount", 0))
+        except (ValueError, TypeError):
+            row_amount = 0.0
         desc_match    = keyword and keyword in row.get("description", "").lower()
         account_match = not rule_account or rule_account == row.get("account_type", "")
-        if desc_match and account_match:
+        sign_match    = (
+            not rule_sign
+            or (rule_sign == "positive" and row_amount > 0)
+            or (rule_sign == "negative" and row_amount < 0)
+        )
+        if desc_match and account_match and sign_match:
             row["category"]        = apply.get("category", row["category"])
             row["subcategory"]     = apply.get("subcategory", row.get("subcategory", ""))
             row["categorized_by"]  = "rule"

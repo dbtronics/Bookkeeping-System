@@ -139,6 +139,14 @@
       </select>
     </div>
     <div class="edit-rule-field">
+      <label>amount_sign <span class="muted">(optional — limit to one direction)</span></label>
+      <select id="er-amount-sign" class="edit-rule-input">
+        <option value="">Either direction</option>
+        <option value="positive">Positive only (incoming / income)</option>
+        <option value="negative">Negative only (outgoing / expense)</option>
+      </select>
+    </div>
+    <div class="edit-rule-field">
       <label>category</label>
       <select id="er-category" class="edit-rule-input">
         <optgroup label="Business">
@@ -467,12 +475,13 @@
     var rule = JSON.parse(btn.dataset.rule);
     _editRuleId = rule.id;
 
-    document.getElementById('er-description').value = rule.description || '';
-    document.getElementById('er-vendor').value       = rule.match.vendor_name_contains || '';
-    document.getElementById('er-account').value      = rule.match.account_type || '';
-    document.getElementById('er-category').value     = rule.apply.category || '';
-    document.getElementById('er-subcategory').value  = rule.apply.subcategory || '';
-    document.getElementById('er-exclude').checked    = !!rule.apply.exclude_from_pnl;
+    document.getElementById('er-description').value  = rule.description || '';
+    document.getElementById('er-vendor').value        = rule.match.vendor_name_contains || '';
+    document.getElementById('er-account').value       = rule.match.account_type || '';
+    document.getElementById('er-amount-sign').value   = rule.match.amount_sign || '';
+    document.getElementById('er-category').value      = rule.apply.category || '';
+    document.getElementById('er-subcategory').value   = rule.apply.subcategory || '';
+    document.getElementById('er-exclude').checked     = !!rule.apply.exclude_from_pnl;
     document.getElementById('edit-rule-error').style.display = 'none';
 
     document.getElementById('editRuleOverlay').style.display = 'flex';
@@ -492,13 +501,18 @@
     if (!vendor) { errEl.textContent = 'vendor_name_contains is required.'; errEl.style.display = 'block'; return; }
     if (!category) { errEl.textContent = 'Category is required.'; errEl.style.display = 'block'; return; }
 
-    var account  = document.getElementById('er-account').value;
-    var subcat   = document.getElementById('er-subcategory').value.trim();
-    var exclude  = document.getElementById('er-exclude').checked;
+    var account    = document.getElementById('er-account').value;
+    var amountSign = document.getElementById('er-amount-sign').value;
+    var subcat     = document.getElementById('er-subcategory').value.trim();
+    var exclude    = document.getElementById('er-exclude').checked;
 
     var rule = {
       description: document.getElementById('er-description').value.trim(),
-      match: { vendor_name_contains: vendor, ...(account ? { account_type: account } : {}) },
+      match: {
+        vendor_name_contains: vendor,
+        ...(account    ? { account_type: account }       : {}),
+        ...(amountSign ? { amount_sign:  amountSign }    : {}),
+      },
       apply: { category, ...(subcat ? { subcategory: subcat } : {}), exclude_from_pnl: exclude },
     };
 

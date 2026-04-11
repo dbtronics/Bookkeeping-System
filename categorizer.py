@@ -110,19 +110,28 @@ def match_rule(transaction, rules):
         The matching rule's "apply" dict if a rule matched, or None.
         Also returns the matched rule's id and description for logging.
     """
-    description = transaction.get("description", "").lower()
+    description  = transaction.get("description", "").lower()
     account_type = transaction.get("account_type", "")
+    try:
+        amount = float(transaction.get("amount", 0))
+    except (ValueError, TypeError):
+        amount = 0.0
 
     for rule in rules:
-        match = rule.get("match", {})
-        keyword = match.get("vendor_name_contains", "").lower()
+        match        = rule.get("match", {})
+        keyword      = match.get("vendor_name_contains", "").lower()
         rule_account = match.get("account_type", "")
+        rule_sign    = match.get("amount_sign", "")   # "positive" | "negative" | "" (either)
 
-        # Both conditions must match
         keyword_matches = keyword and keyword in description
         account_matches = not rule_account or rule_account == account_type
+        sign_matches    = (
+            not rule_sign
+            or (rule_sign == "positive" and amount > 0)
+            or (rule_sign == "negative" and amount < 0)
+        )
 
-        if keyword_matches and account_matches:
+        if keyword_matches and account_matches and sign_matches:
             log.debug(f"Rule {rule['id']} matched: {transaction['description'][:50]}")
             return rule.get("apply", {}), rule["id"], rule["description"]
 
