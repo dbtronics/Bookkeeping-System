@@ -249,11 +249,7 @@ def detect_passthrough_pairs(rows, tolerance=None, window_days=None):
     if tolerance   is None: tolerance   = PASSTHROUGH_TOLERANCE
     if window_days is None: window_days = PASSTHROUGH_WINDOW_DAYS
 
-    candidates = [
-        r for r in rows
-        if r.get("account_type") == "personal"
-        and r.get("exclude_from_pnl", "").strip().lower() != "true"
-    ]
+    candidates = list(rows)
 
     incoming = [r for r in candidates if _amount(r) > 0]
     outgoing = [r for r in candidates if _amount(r) < 0]

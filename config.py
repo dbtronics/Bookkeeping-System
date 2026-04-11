@@ -48,7 +48,7 @@ RULE_SUGGESTION_MIN  = 2   # categorizer.py → suggest_rules()
 # Used by: dashboard/aggregator.py → detect_passthrough_pairs()
 #          dashboard/routes.py → /passthrough/scan
 PASSTHROUGH_TOLERANCE   = float(os.environ.get("PASSTHROUGH_TOLERANCE",   1.00))
-PASSTHROUGH_WINDOW_DAYS = int(os.environ.get("PASSTHROUGH_WINDOW_DAYS",   5))
+PASSTHROUGH_WINDOW_DAYS = int(os.environ.get("PASSTHROUGH_WINDOW_DAYS",   2))
 
 
 # =============================================================================
