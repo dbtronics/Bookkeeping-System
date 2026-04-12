@@ -49,7 +49,10 @@
             {% set td = {"id": t.id, "date": t.date, "vendor": t.vendor, "amount": t.amount, "account": t.account_type, "cat": t.category, "subcat": t.subcategory} %}
             <div class="bar-drill-row">
               <span class="mono muted">{{ t.date }}</span>
-              <span class="bar-drill-vendor" title="{{ t.description }}">{{ t.display or t.vendor or t.description }}</span>
+              <span class="bar-drill-vendor">
+                <span class="bar-drill-vendor-text" title="{{ t.description }}">{{ t.display or t.vendor or t.description }}</span>
+                {% if t.card_type %}<span class="pill grey" style="font-size:10px;flex-shrink:0;">{{ t.card_type }}{% if t.card_alias %}&nbsp;·&nbsp;{{ t.card_alias }}{% endif %}</span>{% endif %}
+              </span>
               <span class="mono positive">+${{ "{:,.2f}".format(t.amount|abs) }}</span>
               <button class="btn-txn-edit" data-txn='{{ td | tojson }}' onclick="openTxnEdit(this)" title="Edit">&#9998;</button>
               <button class="btn-pt-check" data-id="{{ t.id }}" onclick="openPtCheck(this)" title="Check pass-through">&#8652;</button>
@@ -90,7 +93,10 @@
             {% set td = {"id": t.id, "date": t.date, "vendor": t.vendor, "amount": t.amount, "account": t.account_type, "cat": t.category, "subcat": t.subcategory} %}
             <div class="bar-drill-row">
               <span class="mono muted">{{ t.date }}</span>
-              <span class="bar-drill-vendor" title="{{ t.description }}">{{ t.display or t.vendor or t.description }}</span>
+              <span class="bar-drill-vendor">
+                <span class="bar-drill-vendor-text" title="{{ t.description }}">{{ t.display or t.vendor or t.description }}</span>
+                {% if t.card_type %}<span class="pill grey" style="font-size:10px;flex-shrink:0;">{{ t.card_type }}{% if t.card_alias %}&nbsp;·&nbsp;{{ t.card_alias }}{% endif %}</span>{% endif %}
+              </span>
               <span class="mono negative">−${{ "{:,.2f}".format(t.amount|abs) }}</span>
               <button class="btn-txn-edit" data-txn='{{ td | tojson }}' onclick="openTxnEdit(this)" title="Edit">&#9998;</button>
               <button class="btn-pt-check" data-id="{{ t.id }}" onclick="openPtCheck(this)" title="Check pass-through">&#8652;</button>
@@ -133,7 +139,10 @@
           {% set td = {"id": t.id, "date": t.date, "vendor": t.vendor, "amount": t.amount, "account": t.account_type, "cat": t.category, "subcat": t.subcategory} %}
           <div class="bar-drill-row">
             <span class="mono muted">{{ t.date }}</span>
-            <span class="bar-drill-vendor" title="{{ t.description }}">{{ t.display or t.vendor or t.description }}</span>
+            <span class="bar-drill-vendor">
+              <span class="bar-drill-vendor-text" title="{{ t.description }}">{{ t.display or t.vendor or t.description }}</span>
+              {% if t.card_type %}<span class="pill grey" style="font-size:10px;flex-shrink:0;">{{ t.card_type }}{% if t.card_alias %}&nbsp;·&nbsp;{{ t.card_alias }}{% endif %}</span>{% endif %}
+            </span>
             <span class="mono negative">−${{ "{:,.2f}".format(t.amount|abs) }}</span>
             <button class="btn-txn-edit" data-txn='{{ td | tojson }}' onclick="openTxnEdit(this)" title="Edit">&#9998;</button>
             <button class="btn-pt-check" data-id="{{ t.id }}" onclick="openPtCheck(this)" title="Check pass-through">&#8652;</button>
@@ -181,6 +190,7 @@
               <span class="vendor">{{ t.vendor_name or t.description }}</span>
               {% if t.exclude_from_pnl == 'True' %}<span class="pill grey">excl.</span>{% endif %}
               {% if t.flagged == 'True' %}<span class="pill orange">flagged</span>{% endif %}
+              {% if t.card_type %}<span class="pill grey" style="font-size:10px;">{{ t.card_type }}{% if t.card_alias %} · {{ t.card_alias }}{% endif %}</span>{% endif %}
             </td>
             <td>{{ t.category }}{% if t.subcategory %}<span class="muted"> / {{ t.subcategory }}</span>{% endif %}</td>
             <td><span class="pill {% if t.categorized_by == 'rule' %}blue{% elif t.categorized_by == 'ai' %}teal{% else %}grey{% endif %}">{{ t.categorized_by }}</span></td>
@@ -232,6 +242,7 @@
               <div class="cat-txn-row" data-txn='{{ t | tojson }}'>
                 <span class="cat-txn-date mono">{{ t.date }}</span>
                 <span class="cat-txn-vendor">{{ t.vendor }}</span>
+                {% if t.card_type %}<span class="pill grey" style="font-size:10px;flex-shrink:0;">{{ t.card_type }}{% if t.card_alias %} · {{ t.card_alias }}{% endif %}</span>{% endif %}
                 <span class="cat-txn-amount {% if t.amount >= 0 %}positive{% else %}negative{% endif %}">
                   {% if t.amount >= 0 %}+{% endif %}${{ "{:,.2f}".format(t.amount|abs) }}
                 </span>
@@ -247,6 +258,7 @@
           <div class="cat-txn-row cat-txn-direct" data-txn='{{ t | tojson }}'>
             <span class="cat-txn-date mono">{{ t.date }}</span>
             <span class="cat-txn-vendor">{{ t.vendor }}</span>
+            {% if t.card_type %}<span class="pill grey" style="font-size:10px;flex-shrink:0;">{{ t.card_type }}{% if t.card_alias %} · {{ t.card_alias }}{% endif %}</span>{% endif %}
             <span class="cat-txn-amount {% if t.amount >= 0 %}positive{% else %}negative{% endif %}">
               {% if t.amount >= 0 %}+{% endif %}${{ "{:,.2f}".format(t.amount|abs) }}
             </span>

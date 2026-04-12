@@ -429,10 +429,16 @@ a:hover { text-decoration: underline; }
 .bar-drill-row:last-child { border-bottom: none; }
 
 .bar-drill-vendor {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--text);
+}
+.bar-drill-vendor-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text);
 }
 
 /* ---- Two-col layout -------------------------------------- */

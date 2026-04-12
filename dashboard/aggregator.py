@@ -280,6 +280,8 @@ def _txn_min(row, kws=None):
         "description":  row.get("description", ""),
         "amount":       round(amt, 2),
         "account_type": row.get("account_type", ""),
+        "card_type":    row.get("card_type", ""),
+        "card_alias":   row.get("card_alias", ""),
         "category":     row.get("category", ""),
         "subcategory":  row.get("subcategory", ""),
     }
@@ -633,14 +635,16 @@ def _build_categories_tree(rows):
         amt    = _amount(r)
         cat_totals[cat] += amt
         txn = {
-            "id":      r.get("transaction_id", ""),
-            "date":    r.get("date", ""),
-            "vendor":  r.get("vendor_name") or r.get("description", ""),
-            "desc":    r.get("description", ""),
-            "amount":  round(amt, 2),
-            "account": r.get("account_type", ""),
-            "cat":     r.get("category", ""),
-            "subcat":  r.get("subcategory", ""),
+            "id":         r.get("transaction_id", ""),
+            "date":       r.get("date", ""),
+            "vendor":     r.get("vendor_name") or r.get("description", ""),
+            "desc":       r.get("description", ""),
+            "amount":     round(amt, 2),
+            "account":    r.get("account_type", ""),
+            "card_type":  r.get("card_type", ""),
+            "card_alias": r.get("card_alias", ""),
+            "cat":        r.get("category", ""),
+            "subcat":     r.get("subcategory", ""),
         }
         if subcat:
             subcat_totals[cat][subcat] += amt

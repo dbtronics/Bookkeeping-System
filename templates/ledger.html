@@ -42,6 +42,7 @@
           <th>Amount</th>
           <th>Account</th>
           <th>Bank</th>
+          <th>Card</th>
           <th>Category</th>
           <th>Subcategory</th>
           <th>By</th>
@@ -66,6 +67,11 @@
             </span>
           </td>
           <td class="muted">{{ t.bank_name or '—' }}</td>
+          <td>
+            {% if t.card_type %}
+              <span class="pill grey" style="font-size:11px;">{{ t.card_type }}</span>{% if t.card_alias %}<span class="muted" style="font-size:11px;"> {{ t.card_alias }}</span>{% endif %}
+            {% else %}—{% endif %}
+          </td>
           <td>{{ t.category or '—' }}</td>
           <td class="muted">{{ t.subcategory or '—' }}</td>
           <td>
@@ -113,7 +119,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="12" class="empty">No transactions found.</td></tr>
+        <tr><td colspan="13" class="empty">No transactions found.</td></tr>
         {% endfor %}
       </tbody>
     </table>
