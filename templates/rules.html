@@ -126,6 +126,95 @@
   </div>
 </div>
 
+<!-- Categories per account type -->
+<div class="card accordion-card">
+  <div class="card-header accordion-toggle" onclick="toggleAccordion(this)">
+    <h2>Categories</h2>
+    <span class="muted" style="margin-right:auto;">Edit the category lists that Claude uses for categorization</span>
+    <span class="accordion-chevron">&#8250;</span>
+  </div>
+  <div class="accordion-body">
+    <p class="muted" style="margin-bottom:14px;">
+      These are the categories Claude can assign to transactions. Add or remove categories per account type.
+      Changes take effect immediately on the next categorization run.
+    </p>
+
+    <!-- Tab bar -->
+    <div id="cat-tabs" style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:14px;">
+      {% for acct_type, cat_list in settings_categories.items() %}
+      <button class="cat-tab-btn{% if loop.first %} active{% endif %}"
+              data-acct="{{ acct_type }}"
+              onclick="switchCatTab('{{ acct_type }}')"
+              style="padding:7px 18px;font-size:13px;border:none;border-bottom:2px solid {% if loop.first %}var(--teal){% else %}transparent{% endif %};background:none;cursor:pointer;color:{% if loop.first %}var(--teal){% else %}var(--muted){% endif %};font-weight:{% if loop.first %}600{% else %}400{% endif %};">
+        {{ acct_type | capitalize }}
+      </button>
+      {% endfor %}
+    </div>
+
+    <!-- Category lists per account type -->
+    {% for acct_type, cat_list in settings_categories.items() %}
+    <div id="cat-panel-{{ acct_type }}" class="cat-panel" style="{% if not loop.first %}display:none;{% endif %}">
+      <div id="cat-list-{{ acct_type }}" style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px;">
+        {% for cat in cat_list %}
+        <div class="cat-row" data-cat="{{ cat }}" data-acct="{{ acct_type }}"
+             style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-radius:6px;background:var(--surface-alt,var(--surface));">
+          <span style="font-size:13px;">{{ cat }}</span>
+          <button class="kw-remove" title="Remove"
+                  onclick="removeCategory('{{ acct_type }}', '{{ cat }}')"
+                  {% if cat == 'Uncategorized' %}disabled title="Uncategorized is required"{% endif %}>&#10005;</button>
+        </div>
+        {% else %}
+        <div class="muted" style="font-size:13px;" id="cat-empty-{{ acct_type }}">No categories yet.</div>
+        {% endfor %}
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="text" id="cat-input-{{ acct_type }}" class="edit-rule-input"
+               placeholder="New category name" style="max-width:260px;margin:0;"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();addCategory('{{ acct_type }}');}">
+        <button class="btn btn-sm btn-approve" onclick="addCategory('{{ acct_type }}')">+ Add</button>
+      </div>
+      <div id="cat-error-{{ acct_type }}" style="color:var(--red);font-size:13px;margin-top:6px;display:none;"></div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Account types -->
+<div class="card accordion-card">
+  <div class="card-header accordion-toggle" onclick="toggleAccordion(this)">
+    <h2>Account types</h2>
+    <span class="muted" style="margin-right:auto;">{{ settings_account_types|length }} active — controls which tabs appear in the nav</span>
+    <span class="accordion-chevron">&#8250;</span>
+  </div>
+  <div class="accordion-body">
+    <p class="muted" style="margin-bottom:12px;">
+      Removing an account type hides its nav tab and removes it from dropdowns.
+      Existing transactions are not affected. Re-adding it restores the tab immediately.
+    </p>
+    <div id="acct-type-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+      {% for acct_type in settings_account_types %}
+      <span class="kw-pill" data-acct="{{ acct_type }}">
+        {{ acct_type | capitalize }}
+        <button class="kw-remove" onclick="removeAccountType('{{ acct_type }}')" title="Remove">&#10005;</button>
+      </span>
+      {% else %}
+      <span class="muted" id="acct-type-empty">No account types configured.</span>
+      {% endfor %}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <input type="text" id="acct-type-input" class="edit-rule-input"
+             placeholder="e.g. freelance" style="max-width:220px;margin:0;"
+             onkeydown="if(event.key==='Enter'){event.preventDefault();addAccountType();}">
+      <button class="btn btn-sm btn-approve" onclick="addAccountType()">+ Add</button>
+    </div>
+    <div id="acct-type-error" style="color:var(--red);font-size:13px;margin-top:6px;display:none;"></div>
+    <p class="muted" style="margin-top:10px;font-size:12px;">
+      Note: new account types appear in dropdowns and the categorizer immediately,
+      but there is no dedicated dashboard page for them yet.
+    </p>
+  </div>
+</div>
+
 <!-- NL rule creation chat — always at bottom -->
 <div class="card">
   <div class="card-header">
@@ -661,6 +750,166 @@
   document.getElementById('kw-input') && document.getElementById('kw-input').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') { e.preventDefault(); addKeyword(); }
   });
+
+  // ── Categories ──────────────────────────────────────────────────────────
+
+  function switchCatTab(acctType) {
+    document.querySelectorAll('.cat-panel').forEach(function(p) { p.style.display = 'none'; });
+    document.querySelectorAll('.cat-tab-btn').forEach(function(b) {
+      var active = b.dataset.acct === acctType;
+      b.style.borderBottomColor = active ? 'var(--teal)' : 'transparent';
+      b.style.color             = active ? 'var(--teal)' : 'var(--muted)';
+      b.style.fontWeight        = active ? '600' : '400';
+    });
+    var panel = document.getElementById('cat-panel-' + acctType);
+    if (panel) panel.style.display = '';
+  }
+
+  async function addCategory(acctType) {
+    var input = document.getElementById('cat-input-' + acctType);
+    var errEl = document.getElementById('cat-error-' + acctType);
+    var cat   = (input.value || '').trim();
+    errEl.style.display = 'none';
+    if (!cat) { errEl.textContent = 'Please enter a category name.'; errEl.style.display = 'block'; return; }
+    try {
+      var res = await fetch('/settings/categories/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_type: acctType, category: cat }),
+      });
+      var data = await res.json();
+      if (data.status === 'ok') {
+        input.value = '';
+        renderCategoryList(acctType, data.categories);
+      } else {
+        errEl.textContent = data.error || 'Failed to add category.';
+        errEl.style.display = 'block';
+      }
+    } catch (e) {
+      errEl.textContent = 'Network error: ' + e.message;
+      errEl.style.display = 'block';
+    }
+  }
+
+  async function removeCategory(acctType, cat) {
+    var errEl = document.getElementById('cat-error-' + acctType);
+    errEl.style.display = 'none';
+    if (!confirm('Remove category "' + cat + '" from ' + acctType + '?')) return;
+    try {
+      var res = await fetch('/settings/categories/remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_type: acctType, category: cat }),
+      });
+      var data = await res.json();
+      if (data.status === 'ok') {
+        renderCategoryList(acctType, data.categories);
+      } else {
+        errEl.textContent = data.error || 'Failed to remove category.';
+        errEl.style.display = 'block';
+      }
+    } catch (e) {
+      errEl.textContent = 'Network error: ' + e.message;
+      errEl.style.display = 'block';
+    }
+  }
+
+  function renderCategoryList(acctType, categories) {
+    var list = document.getElementById('cat-list-' + acctType);
+    if (!list) return;
+    list.innerHTML = '';
+    if (!categories || categories.length === 0) {
+      list.innerHTML = '<div class="muted" style="font-size:13px;">No categories yet.</div>';
+      return;
+    }
+    categories.forEach(function(cat) {
+      var row = document.createElement('div');
+      row.className = 'cat-row';
+      row.dataset.cat  = cat;
+      row.dataset.acct = acctType;
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-radius:6px;background:var(--surface-alt,var(--surface));';
+      var isRequired = cat === 'Uncategorized';
+      row.innerHTML =
+        '<span style="font-size:13px;">' + cat.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</span>' +
+        '<button class="kw-remove"' + (isRequired ? ' disabled title="Uncategorized is required"' : ' title="Remove"') + ' onclick="removeCategory(\'' + acctType + '\', \'' + cat.replace(/'/g,"\\'") + '\')">&#10005;</button>';
+      list.appendChild(row);
+    });
+  }
+
+  // ── Account types ────────────────────────────────────────────────────────
+
+  async function addAccountType() {
+    var input = document.getElementById('acct-type-input');
+    var errEl = document.getElementById('acct-type-error');
+    var val   = (input.value || '').trim().toLowerCase();
+    errEl.style.display = 'none';
+    if (!val) { errEl.textContent = 'Please enter an account type.'; errEl.style.display = 'block'; return; }
+    try {
+      var res = await fetch('/settings/account-types/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_type: val }),
+      });
+      var data = await res.json();
+      if (data.status === 'ok') {
+        input.value = '';
+        renderAccountTypes(data.account_types);
+      } else {
+        errEl.textContent = data.error || 'Failed to add account type.';
+        errEl.style.display = 'block';
+      }
+    } catch (e) {
+      errEl.textContent = 'Network error: ' + e.message;
+      errEl.style.display = 'block';
+    }
+  }
+
+  async function removeAccountType(acctType) {
+    var errEl = document.getElementById('acct-type-error');
+    errEl.style.display = 'none';
+    if (!confirm('Remove account type "' + acctType + '"? The nav tab will be hidden immediately. Existing transactions are not affected.')) return;
+    try {
+      var res = await fetch('/settings/account-types/remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_type: acctType }),
+      });
+      var data = await res.json();
+      if (data.status === 'ok') {
+        renderAccountTypes(data.account_types);
+        // Notify user that a page reload is needed for nav to update
+        errEl.style.color = 'var(--muted)';
+        errEl.textContent = 'Saved. Reload the page to see the updated navigation.';
+        errEl.style.display = 'block';
+      } else {
+        errEl.style.color = 'var(--red)';
+        errEl.textContent = data.error || 'Failed to remove account type.';
+        errEl.style.display = 'block';
+      }
+    } catch (e) {
+      errEl.style.color = 'var(--red)';
+      errEl.textContent = 'Network error: ' + e.message;
+      errEl.style.display = 'block';
+    }
+  }
+
+  function renderAccountTypes(types) {
+    var list = document.getElementById('acct-type-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!types || types.length === 0) {
+      list.innerHTML = '<span class="muted" id="acct-type-empty">No account types configured.</span>';
+      return;
+    }
+    types.forEach(function(t) {
+      var span = document.createElement('span');
+      span.className   = 'kw-pill';
+      span.dataset.acct = t;
+      var label = t.charAt(0).toUpperCase() + t.slice(1);
+      span.innerHTML = label + ' <button class="kw-remove" onclick="removeAccountType(\'' + t.replace(/'/g,"\\'") + '\')" title="Remove">&#10005;</button>';
+      list.appendChild(span);
+    });
+  }
 
   async function deleteRule(btn) {
     var ruleId = btn.dataset.id;

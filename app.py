@@ -86,6 +86,16 @@ from ingest.transactions import transactions_bp
 from query.nl import query_bp
 
 app.register_blueprint(dashboard_bp)
+
+# Inject account_types + categories into every template so base.html
+# can render the nav dynamically and modals can show the right options.
+@app.context_processor
+def inject_settings():
+    from settings_utils import get_account_types, get_categories
+    return {
+        "nav_account_types": get_account_types(),
+        "all_categories":    get_categories(),
+    }
 app.register_blueprint(receipts_bp)
 app.register_blueprint(transactions_bp)
 app.register_blueprint(query_bp)

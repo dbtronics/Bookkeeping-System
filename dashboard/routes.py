@@ -12,9 +12,12 @@ from config import (
     RULES_JSON, RULES_ARCHIVE_DIR, TRANSFER_CONFIG_JSON,
     ANTHROPIC_API_KEY, HAIKU_MODEL, SONNET_MODEL,
     NL_MODELS, NL_DEFAULT_MODEL, NL_MODEL_PRICING, USD_TO_CAD,
-    BUSINESS_CATEGORIES, PERSONAL_CATEGORIES,
     PASSTHROUGH_TOLERANCE, PASSTHROUGH_WINDOW_DAYS,
-    EXCLUDE_FROM_PNL_CATEGORIES, MASTER_TRANSACTIONS_CSV,
+    MASTER_TRANSACTIONS_CSV,
+)
+from settings_utils import (
+    load_settings, save_settings,
+    get_account_types, get_categories, get_exclude_from_pnl_categories,
 )
 from dashboard.aggregator import get_overview, get_business, get_personal, get_flagged, get_ledger, detect_passthrough_pairs, scan_transactions
 
@@ -114,9 +117,10 @@ def dashboard_overview():
 def dashboard_business():
     month = request.args.get("month")
     data = get_business(month_filter=month)
+    cats = get_categories()
     return render_template("business.html",
-                           business_categories=BUSINESS_CATEGORIES,
-                           personal_categories=PERSONAL_CATEGORIES,
+                           business_categories=cats.get("business", []),
+                           personal_categories=cats.get("personal", []),
                            **data)
 
 
@@ -125,9 +129,10 @@ def dashboard_business():
 def dashboard_personal():
     month = request.args.get("month")
     data = get_personal(month_filter=month)
+    cats = get_categories()
     return render_template("personal.html",
-                           business_categories=BUSINESS_CATEGORIES,
-                           personal_categories=PERSONAL_CATEGORIES,
+                           business_categories=cats.get("business", []),
+                           personal_categories=cats.get("personal", []),
                            **data)
 
 
@@ -146,10 +151,11 @@ def dashboard_ledger():
     account     = request.args.get("account")
     search      = request.args.get("q", "").strip()
     data = get_ledger(month_filter=month, account_type_filter=account or None, search=search or None)
+    cats = get_categories()
     return render_template(
         "ledger.html",
-        business_categories=BUSINESS_CATEGORIES,
-        personal_categories=PERSONAL_CATEGORIES,
+        business_categories=cats.get("business", []),
+        personal_categories=cats.get("personal", []),
         search=search,
         account_filter=account or "",
         **data,
@@ -162,13 +168,18 @@ def dashboard_rules():
     rules = _load_rules()
     suggested = _load_suggested_rules()
     cfg = _load_transfer_config()
+    cats = get_categories()
+    settings = load_settings()
     return render_template(
         "rules.html",
         rules=rules,
         suggested=suggested,
-        business_categories=BUSINESS_CATEGORIES,
-        personal_categories=PERSONAL_CATEGORIES,
+        business_categories=cats.get("business", []),
+        personal_categories=cats.get("personal", []),
         transfer_keywords=cfg.get("internal_transfer_keywords", []),
+        settings_account_types=settings.get("account_types", []),
+        settings_categories=cats,
+        exclude_from_pnl_categories=list(settings.get("exclude_from_pnl_categories", [])),
     )
 
 
@@ -498,8 +509,9 @@ def rules_propose():
     if not desc:
         return jsonify({"error": "No description provided"}), 400
 
-    biz_cats = ", ".join(BUSINESS_CATEGORIES)
-    per_cats = ", ".join(PERSONAL_CATEGORIES)
+    cats = get_categories()
+    biz_cats = ", ".join(cats.get("business", []))
+    per_cats = ", ".join(cats.get("personal", []))
 
     prompt = f"""You are a rule generator for a household bookkeeping system.
 Convert the user's plain-English description into one or more rule JSON objects.
@@ -760,7 +772,7 @@ def transactions_update():
                 row["flagged"]        = "False"
                 row["flag_reason"]    = ""
                 # Some categories always imply exclusion from P&L
-                if category in EXCLUDE_FROM_PNL_CATEGORIES:
+                if category in get_exclude_from_pnl_categories():
                     row["exclude_from_pnl"] = "True"
                 updated += 1
 
@@ -868,6 +880,136 @@ def transfer_keywords_delete():
     _save_transfer_config(cfg)
     log.info("Transfer keyword removed: %s", keyword)
     return jsonify({"status": "ok", "keywords": kws})
+
+
+# ---------------------------------------------------------------------------
+# Settings — categories
+# ---------------------------------------------------------------------------
+
+@dashboard_bp.route("/settings/categories/add", methods=["POST"])
+@login_required
+def settings_categories_add():
+    """Add a category to an account type's list.
+
+    Request:  { "account_type": "business", "category": "New Category" }
+    Response: { "status": "ok", "categories": [...] }
+    """
+    data = request.get_json(silent=True) or {}
+    acct_type = (data.get("account_type") or "").strip().lower()
+    category  = (data.get("category") or "").strip()
+    if not acct_type:
+        return jsonify({"error": "account_type is required"}), 400
+    if not category:
+        return jsonify({"error": "category is required"}), 400
+
+    settings = load_settings()
+    cats = settings.setdefault("categories", {})
+    acct_list = cats.setdefault(acct_type, [])
+    if category not in acct_list:
+        acct_list.append(category)
+        save_settings(settings)
+        log.info("Category added: %s → %s", acct_type, category)
+    return jsonify({"status": "ok", "categories": acct_list})
+
+
+@dashboard_bp.route("/settings/categories/remove", methods=["POST"])
+@login_required
+def settings_categories_remove():
+    """Remove a category from an account type's list.
+
+    Request:  { "account_type": "business", "category": "Old Category" }
+    Response: { "status": "ok", "categories": [...] }
+    """
+    data = request.get_json(silent=True) or {}
+    acct_type = (data.get("account_type") or "").strip().lower()
+    category  = (data.get("category") or "").strip()
+    if not acct_type or not category:
+        return jsonify({"error": "account_type and category are required"}), 400
+
+    settings = load_settings()
+    cats = settings.get("categories", {})
+    acct_list = [c for c in cats.get(acct_type, []) if c != category]
+    cats[acct_type] = acct_list
+    settings["categories"] = cats
+    save_settings(settings)
+    log.info("Category removed: %s → %s", acct_type, category)
+    return jsonify({"status": "ok", "categories": acct_list})
+
+
+@dashboard_bp.route("/settings/categories/reorder", methods=["POST"])
+@login_required
+def settings_categories_reorder():
+    """Replace a full category list for one account type (for drag-reorder).
+
+    Request:  { "account_type": "business", "categories": ["Revenue", "SaaS tools", ...] }
+    Response: { "status": "ok" }
+    """
+    data = request.get_json(silent=True) or {}
+    acct_type  = (data.get("account_type") or "").strip().lower()
+    new_list   = data.get("categories", [])
+    if not acct_type or not isinstance(new_list, list):
+        return jsonify({"error": "account_type and categories list are required"}), 400
+
+    settings = load_settings()
+    settings.setdefault("categories", {})[acct_type] = new_list
+    save_settings(settings)
+    return jsonify({"status": "ok"})
+
+
+# ---------------------------------------------------------------------------
+# Settings — account types
+# ---------------------------------------------------------------------------
+
+@dashboard_bp.route("/settings/account-types/add", methods=["POST"])
+@login_required
+def settings_account_types_add():
+    """Add a new account type.
+
+    Request:  { "account_type": "freelance" }
+    Response: { "status": "ok", "account_types": [...] }
+    """
+    data = request.get_json(silent=True) or {}
+    acct_type = (data.get("account_type") or "").strip().lower()
+    if not acct_type:
+        return jsonify({"error": "account_type is required"}), 400
+
+    settings = load_settings()
+    types = settings.get("account_types", [])
+    if acct_type not in types:
+        types.append(acct_type)
+        settings["account_types"] = types
+        # Initialise with an empty category list if not already present
+        settings.setdefault("categories", {})[acct_type] = \
+            settings["categories"].get(acct_type, [])
+        save_settings(settings)
+        log.info("Account type added: %s", acct_type)
+    return jsonify({"status": "ok", "account_types": types})
+
+
+@dashboard_bp.route("/settings/account-types/remove", methods=["POST"])
+@login_required
+def settings_account_types_remove():
+    """Remove an account type.
+
+    Does NOT delete categories — they remain in settings.json so they can be
+    restored if the account type is re-added later.
+
+    Request:  { "account_type": "personal" }
+    Response: { "status": "ok", "account_types": [...] }
+    """
+    data = request.get_json(silent=True) or {}
+    acct_type = (data.get("account_type") or "").strip().lower()
+    if not acct_type:
+        return jsonify({"error": "account_type is required"}), 400
+
+    settings = load_settings()
+    types = [t for t in settings.get("account_types", []) if t != acct_type]
+    if len(types) == 0:
+        return jsonify({"error": "Cannot remove last account type"}), 400
+    settings["account_types"] = types
+    save_settings(settings)
+    log.info("Account type removed: %s", acct_type)
+    return jsonify({"status": "ok", "account_types": types})
 
 
 # ---------------------------------------------------------------------------

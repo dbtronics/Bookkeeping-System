@@ -36,12 +36,16 @@
       <li><a href="{{ url_for('dashboard.dashboard_overview') }}" class="nav-link {% if request.endpoint == 'dashboard.dashboard_overview' %}active{% endif %}">
         <span class="nav-icon">◈</span> Overview
       </a></li>
+      {% if 'business' in nav_account_types %}
       <li><a href="{{ url_for('dashboard.dashboard_business') }}" class="nav-link {% if request.endpoint == 'dashboard.dashboard_business' %}active{% endif %}">
         <span class="nav-icon teal">▸</span> Business
       </a></li>
+      {% endif %}
+      {% if 'personal' in nav_account_types %}
       <li><a href="{{ url_for('dashboard.dashboard_personal') }}" class="nav-link {% if request.endpoint == 'dashboard.dashboard_personal' %}active{% endif %}">
         <span class="nav-icon purple">▸</span> Personal
       </a></li>
+      {% endif %}
       <li><a href="{{ url_for('dashboard.dashboard_ledger') }}" class="nav-link {% if request.endpoint == 'dashboard.dashboard_ledger' %}active{% endif %}">
         <span class="nav-icon">☰</span> Ledger
       </a></li>
@@ -260,13 +264,12 @@
           <!-- Account type -->
           <div>
             <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:6px;">Account type</label>
-            <div style="display:flex;gap:14px;">
+            <div style="display:flex;gap:14px;flex-wrap:wrap;">
+              {% for acct in nav_account_types %}
               <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;">
-                <input type="radio" name="procWaitAcct" value="personal" onchange="_updateNewName()"> Personal
+                <input type="radio" name="procWaitAcct" value="{{ acct }}" onchange="_updateNewName()"> {{ acct | capitalize }}
               </label>
-              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;">
-                <input type="radio" name="procWaitAcct" value="business" onchange="_updateNewName()"> Business
-              </label>
+              {% endfor %}
             </div>
           </div>
 

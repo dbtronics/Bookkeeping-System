@@ -18,6 +18,7 @@ RULES_JSON              = NEXTCLOUD_BASE / "master" / "rules" / "rules.json"
 RULES_ARCHIVE_DIR       = NEXTCLOUD_BASE / "master" / "rules"
 SUGGESTED_RULES_FILE    = RULES_ARCHIVE_DIR / "rules_suggested.json"  # used by: categorizer.py
 TRANSFER_CONFIG_JSON    = RULES_ARCHIVE_DIR / "transfer_config.json"  # internal transfer keywords
+SETTINGS_JSON           = NEXTCLOUD_BASE / "master" / "settings.json" # configurable categories / account types
 
 
 # =============================================================================

@@ -52,8 +52,9 @@ from config import (
     RULES_JSON, RULES_ARCHIVE_DIR, SUGGESTED_RULES_FILE,
     ANTHROPIC_API_KEY, HAIKU_MODEL,
     CONFIDENCE_THRESHOLD, CATEGORIZER_MAX_TOKENS,
-    RULE_SUGGESTION_MIN, ALL_CATEGORIES,
+    RULE_SUGGESTION_MIN,
 )
+from settings_utils import get_categories
 
 log = get_logger("categorizer")
 
@@ -223,7 +224,7 @@ def _claude_categorize(transaction):
     Uncategorized — never crashes the ingest process.
     """
     account_type = transaction.get("account_type", "business")
-    valid_categories = ALL_CATEGORIES.get(account_type, ALL_CATEGORIES["business"])
+    valid_categories = get_categories(account_type)
     categories_str = "\n".join(f"  - {c}" for c in valid_categories)
 
     prompt = f"""Categorize this Canadian bank transaction. Return ONLY a JSON object — no explanation, no markdown.

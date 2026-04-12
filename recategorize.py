@@ -23,8 +23,9 @@ import anthropic
 from config import (
     MASTER_TRANSACTIONS_CSV, ANTHROPIC_API_KEY, HAIKU_MODEL,
     CATEGORIZER_MAX_TOKENS, CONFIDENCE_THRESHOLD,
-    ALL_CATEGORIES, NL_MODEL_PRICING, USD_TO_CAD,
+    NL_MODEL_PRICING, USD_TO_CAD,
 )
+from settings_utils import get_categories
 from categorizer import load_rules, match_rule
 from csv_utils import TRANSACTION_HEADERS
 from logger import get_logger
@@ -37,7 +38,7 @@ _PRICING = NL_MODEL_PRICING.get(HAIKU_MODEL, {"input": 0.80, "output": 4.00})
 def _categorize_with_claude(row):
     """Call Claude Haiku for one row. Returns (result_dict, input_tokens, output_tokens)."""
     account_type = row.get("account_type", "business")
-    valid_categories = ALL_CATEGORIES.get(account_type, ALL_CATEGORIES["business"])
+    valid_categories = get_categories(account_type)
     categories_str = "\n".join(f"  - {c}" for c in valid_categories)
 
     prompt = f"""Categorize this Canadian bank transaction. Return ONLY a JSON object — no explanation, no markdown.

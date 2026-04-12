@@ -27,6 +27,7 @@ from csv_utils import (
 )
 from categorizer import load_rules, categorize, suggest_rules
 from config import NEXTCLOUD_BASE, HAIKU_COST_PER_CALL, USD_TO_CAD
+from settings_utils import get_account_types
 
 log = get_logger("raw_processor")
 
@@ -40,7 +41,6 @@ MONTHS = {
 }
 
 KNOWN_BANKS    = ["cibc", "rbc", "td", "bmo", "scotiabank", "hsbc", "national", "desjardins"]
-ACCOUNT_TYPES  = ["personal", "business"]
 CARD_TYPES     = ["chequing", "credit", "savings", "loc"]
 
 # Friendly display names for bank values stored in lowercase in filenames
@@ -66,16 +66,18 @@ BANK_PARSER = {
 # ---------------------------------------------------------------------------
 
 def _nomenclature_pattern():
-    """Build the regex for the standard filename convention (compiled once)."""
+    """Build the regex for the standard filename convention.
+
+    Loads account types from settings.json each time so that new types added
+    via the UI are recognised immediately (pattern is rebuilt per-call, not cached).
+    """
     banks = "|".join(re.escape(b) for b in KNOWN_BANKS)
-    accts = "|".join(re.escape(a) for a in ACCOUNT_TYPES)
+    accts = "|".join(re.escape(a) for a in get_account_types())
     cards = "|".join(re.escape(c) for c in CARD_TYPES)
     # Alias: optional, must start with a letter (to not collide with date blocks)
     return re.compile(
         rf'^({banks})-({accts})-({cards})(?:-([a-z][a-z0-9-]*))?-(\d{{8}})-(\d{{8}})$'
     )
-
-_NOMENCLATURE_RE = _nomenclature_pattern()
 
 
 def conforms_to_nomenclature(stem):
@@ -84,7 +86,7 @@ def conforms_to_nomenclature(stem):
     Returns (True, metadata_dict) or (False, {}).
     metadata_dict keys: bank, account_type, card_type, card_alias, date_from, date_to
     """
-    m = _NOMENCLATURE_RE.match(stem.lower())
+    m = _nomenclature_pattern().match(stem.lower())
     if not m:
         return False, {}
     bank_s, acct_s, card_s, alias_s, d1, d2 = m.groups()
@@ -113,9 +115,12 @@ def infer_from_filename(stem):
             break
 
     account_type = None
-    if "personal" in s:
-        account_type = "personal"
-    elif "business" in s or "corp" in s:
+    for _acct in get_account_types():
+        if _acct in s:
+            account_type = _acct
+            break
+    # Fallback keyword aliases not in the settings list
+    if not account_type and ("corp" in s):
         account_type = "business"
 
     # Card type — check LOC first (most specific), then credit, then chequing, then savings
@@ -138,7 +143,7 @@ def infer_from_filename(stem):
 
 def _extract_alias(stem_lower, bank, account_type, card_type):
     """Extract any extra label parts from the stem that aren't known keywords or dates."""
-    known = set(KNOWN_BANKS) | set(ACCOUNT_TYPES) | set(CARD_TYPES)
+    known = set(KNOWN_BANKS) | set(get_account_types()) | set(CARD_TYPES)
     known |= {"cc", "dc", "debit", "chequing", "checking", "cheque",
                "credit", "savings", "saving", "loc", "corp",
                "lineofcredit", "line-of-credit"}
