@@ -291,10 +291,11 @@ def write_organized_csv(rows, bank, account_type, card_type, card_alias, year, m
 
 
 def append_to_master(rows, bank, account_type, card_type, card_alias, source_file,
-                     existing_keys, id_counter, rules):
+                     existing_keys, id_counter, rules, state=None):
     """Categorize and append only new rows to master CSV.
 
     Returns (added, dupes, flagged, rule_matched, ai_categorized).
+    state (optional): shared progress dict — updates row_progress on each row.
     """
     ensure_csv(MASTER_CSV, TRANSACTION_HEADERS)
     today = datetime.now().strftime("%Y-%m-%d")
@@ -304,6 +305,10 @@ def append_to_master(rows, bank, account_type, card_type, card_alias, source_fil
         if is_duplicate(row["date"], row["description"], row["amount"],
                         bank, account_type, card_type, existing_keys, card_alias):
             dupes += 1
+            if state and "row_progress" in state:
+                rp = state["row_progress"]
+                rp["done"]  += 1
+                rp["dupes"] += 1
             log.debug("DUPE  %s  %s  $%.2f", row["date"], row["description"][:40], row["amount"])
             continue
 
@@ -315,6 +320,8 @@ def append_to_master(rows, bank, account_type, card_type, card_alias, source_fil
 
         if cat["categorized_by"] == "ai":
             ai_categorized += 1
+            if state and "row_progress" in state:
+                state["row_progress"]["ai_calls"] += 1
         elif cat["categorized_by"] == "rule":
             rule_matched += 1
 
@@ -346,6 +353,10 @@ def append_to_master(rows, bank, account_type, card_type, card_alias, source_fil
         })
 
         added += 1
+        if state and "row_progress" in state:
+            rp = state["row_progress"]
+            rp["done"]  += 1
+            rp["added"] += 1
         if cat["flagged"]:
             flagged += 1
             log.warning("FLAGGED  %s  %s  → %s (confidence=%.2f)",
@@ -360,10 +371,11 @@ def append_to_master(rows, bank, account_type, card_type, card_alias, source_fil
 # ---------------------------------------------------------------------------
 
 def process_file(filepath, bank, account_type, card_type, card_alias,
-                 existing_keys, id_counter, rules):
+                 existing_keys, id_counter, rules, state=None):
     """Process a single raw CSV file with pre-determined metadata.
 
     Returns (added, dupes, flagged, rule_matched, ai_categorized).
+    state (optional): shared progress dict — sets row_progress before processing.
     """
     log.info("── Processing %s  (%s, %s, %s, alias=%r)",
              filepath.name, bank, account_type, card_type, card_alias)
@@ -380,13 +392,23 @@ def process_file(filepath, bank, account_type, card_type, card_alias,
 
     log.info("Parsed %d rows from %s", len(rows), filepath.name)
 
+    # Initialise row-level progress before starting so the UI can show totals
+    if state is not None:
+        state["row_progress"] = {
+            "total":    len(rows),
+            "done":     0,
+            "added":    0,
+            "dupes":    0,
+            "ai_calls": 0,
+        }
+
     file_added = file_dupes = file_flagged = file_rule = file_ai = 0
 
     for (year, month), month_rows in sorted(group_by_month(rows).items()):
         dest = write_organized_csv(month_rows, bank, account_type, card_type, card_alias, year, month)
         added, dupes, flagged, rule_matched, ai_categorized = append_to_master(
             month_rows, bank, account_type, card_type, card_alias, dest,
-            existing_keys, id_counter, rules,
+            existing_keys, id_counter, rules, state=state,
         )
         log.info("  [%s %d] %d rows → +%d new, %d dupes, %d flagged, %d rules, %d AI",
                  MONTHS[month], year, len(month_rows), added, dupes, flagged, rule_matched, ai_categorized)
@@ -541,12 +563,13 @@ def run_with_progress(state):
                             log.warning("Could not rename %s: %s", original_name, e)
 
             state["current_file"] = f.name
+            state["row_progress"] = {"total": 0, "done": 0, "added": 0, "dupes": 0, "ai_calls": 0}
 
             # ── Step 5: Process the file ──
             try:
                 added, dupes, flagged, rule_matched, ai_categorized = process_file(
                     f, bank, account_type, card_type, card_alias,
-                    existing_keys, id_counter, rules,
+                    existing_keys, id_counter, rules, state=state,
                 )
                 status = "done"
                 note   = ""

@@ -187,10 +187,10 @@
         </div>
 
         <!-- Current file + live cost -->
-        <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:12px;">
-          <div style="flex:1;">
+        <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:10px;">
+          <div style="flex:1;min-width:0;">
             <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Currently processing</div>
-            <div id="procCurrentFile" class="mono" style="font-size:13px;color:var(--text);"></div>
+            <div id="procCurrentFile" class="mono" style="font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
           </div>
           <div style="text-align:right;flex-shrink:0;">
             <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">API cost so far</div>
@@ -198,8 +198,19 @@
           </div>
         </div>
 
+        <!-- Row-level progress for current file -->
+        <div id="procRowProgressWrap" style="margin-bottom:12px;display:none;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span id="procRowStats" style="font-size:12px;color:var(--muted);"></span>
+            <span id="procRowPct" style="font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;"></span>
+          </div>
+          <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden;">
+            <div id="procRowBar" style="height:100%;background:var(--teal);border-radius:2px;width:0%;transition:width .3s ease;"></div>
+          </div>
+        </div>
+
         <!-- Completed files list -->
-        <div id="procFilesList" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;margin-bottom:12px;"></div>
+        <div id="procFilesList" style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;margin-bottom:12px;"></div>
 
         <button class="btn btn-dismiss" style="width:100%;" onclick="cancelProcess()">Cancel processing</button>
       </div>
@@ -455,10 +466,28 @@
       var cost = (d.totals && d.totals.api_cost_cad) ? d.totals.api_cost_cad : 0;
       document.getElementById('procLiveCost').textContent = '$' + cost.toFixed(4) + ' CAD';
 
+      // Row-level progress for current file
+      var rp   = d.row_progress;
+      var wrap = document.getElementById('procRowProgressWrap');
+      if (rp && rp.total > 0) {
+        var pct = Math.min(100, Math.round(rp.done / rp.total * 100));
+        var stats = 'Row ' + rp.done + ' of ' + rp.total
+          + ' \u00b7 ' + rp.added + ' new'
+          + ' \u00b7 ' + rp.dupes + ' dupes'
+          + (rp.ai_calls > 0 ? ' \u00b7 ' + rp.ai_calls + ' AI calls' : '');
+        document.getElementById('procRowStats').textContent = stats;
+        document.getElementById('procRowPct').textContent   = pct + '%';
+        document.getElementById('procRowBar').style.width   = pct + '%';
+        wrap.style.display = '';
+      } else {
+        wrap.style.display = 'none';
+      }
+
       var list = document.getElementById('procFilesList');
       list.innerHTML = (d.files || []).map(function(f) { return _fileRow(f, false); }).join('');
       if (d.current_file) {
         list.innerHTML += _fileRow({ name: d.current_file, status: 'processing' }, true);
+        list.scrollTop = list.scrollHeight;
       }
     }
 
