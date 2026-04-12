@@ -445,6 +445,11 @@ def run_with_progress(state):
         state["phase"] = "processing"
 
         for f in files:
+            # Check for cancellation before processing each file
+            if state.get("cancel_requested"):
+                log.info("Processing cancelled by user — stopping before %s", f.name)
+                break
+
             state["current_file"] = f.name
             original_name         = f.name
 
@@ -488,7 +493,14 @@ def run_with_progress(state):
                     },
                 }
                 log.info("Waiting for user input on: %s", f.name)
-                input_event.wait()   # Blocks until /process/answer fires the event
+                input_event.wait()   # Blocks until /process/answer or /process/cancel fires the event
+
+                # Check if cancel was requested while waiting
+                if state.get("cancel_requested"):
+                    log.info("Processing cancelled while waiting for input on: %s", f.name)
+                    state["phase"] = "processing"
+                    state.pop("waiting_for", None)
+                    break
 
                 # Read answer submitted by user
                 ans          = state.get("answer", {})
@@ -561,6 +573,10 @@ def run_with_progress(state):
             t["ai_categorized"] += ai_categorized
             t["api_cost_cad"]    = round(t["api_cost_cad"] + file_cost, 4)
             state["files_done"] += 1
+
+        if state.get("cancel_requested"):
+            state.update({"phase": "cancelled", "done": True, "running": False, "current_file": ""})
+            return
 
         # Rule suggestions after full run
         try:

@@ -171,7 +171,8 @@
       <!-- State 1: Scanning -->
       <div id="procScanning" style="display:none;text-align:center;padding:16px 0 8px;">
         <div class="muted" style="font-size:15px;margin-bottom:6px;">Checking raw folder for new files…</div>
-        <div class="muted" style="font-size:12px;">This may take a moment.</div>
+        <div class="muted" style="font-size:12px;margin-bottom:16px;">This may take a moment.</div>
+        <button class="btn btn-dismiss" style="width:100%;" onclick="cancelProcess()">Cancel</button>
       </div>
 
       <!-- State 2: Processing -->
@@ -194,7 +195,9 @@
         </div>
 
         <!-- Completed files list -->
-        <div id="procFilesList" style="display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto;"></div>
+        <div id="procFilesList" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;margin-bottom:12px;"></div>
+
+        <button class="btn btn-dismiss" style="width:100%;" onclick="cancelProcess()">Cancel processing</button>
       </div>
 
       <!-- State 3: Done -->
@@ -300,6 +303,7 @@
         </div>
 
         <button id="procWaitConfirmBtn" class="btn btn-approve" style="width:100%;" onclick="submitProcAnswer()">Confirm &amp; Continue</button>
+        <button class="btn btn-dismiss" style="width:100%;margin-top:8px;" onclick="cancelProcess()">Cancel processing</button>
       </div>
 
       <!-- No files found -->
@@ -317,6 +321,14 @@
         <button class="btn btn-dismiss" style="width:100%;" onclick="closeProcessModal()">Close</button>
       </div>
 
+      <!-- Cancelled -->
+      <div id="procCancelled" style="display:none;text-align:center;padding:16px 0;">
+        <div style="font-size:28px;margin-bottom:10px;">✕</div>
+        <div style="font-size:15px;margin-bottom:6px;">Processing cancelled</div>
+        <div id="procCancelledSummary" class="muted" style="font-size:13px;margin-bottom:20px;"></div>
+        <button class="btn btn-dismiss" style="width:100%;" onclick="closeProcessModal()">Close</button>
+      </div>
+
     </div>
   </div>
 
@@ -331,6 +343,7 @@
         .then(function(r) { return r.json(); })
         .then(function(d) {
           if (d.error) { _showProcError(d.error); return; }
+          // "started" = new job; "already_running" = attach to existing job — both start polling
           _procPollTimer = setInterval(_pollProcess, 1000);
         })
         .catch(function(e) { _showProcError(e.message); });
@@ -364,6 +377,17 @@
             return;
           }
 
+          if (d.phase === 'cancelled') {
+            _stopPoll();
+            _procWaitData = null;
+            var done  = d.files_done  || 0;
+            var total = d.files_found || 0;
+            document.getElementById('procCancelledSummary').textContent =
+              done + ' of ' + total + ' file' + (total !== 1 ? 's' : '') + ' processed before cancellation.';
+            _showProcState('cancelled');
+            return;
+          }
+
           if (d.done) {
             _stopPoll();
             _procWaitData = null;
@@ -380,12 +404,12 @@
     }
 
     function _showProcState(state) {
-      ['procScanning','procProcessing','procDone','procEmpty','procError','procWaiting'].forEach(function(id) {
+      ['procScanning','procProcessing','procDone','procEmpty','procError','procWaiting','procCancelled'].forEach(function(id) {
         document.getElementById(id).style.display = 'none';
       });
       var map = { scanning:'procScanning', processing:'procProcessing',
                   done:'procDone', empty:'procEmpty', error:'procError',
-                  waiting_input:'procWaiting' };
+                  waiting_input:'procWaiting', cancelled:'procCancelled' };
       if (map[state]) document.getElementById(map[state]).style.display = '';
     }
 
@@ -563,12 +587,18 @@
         });
     }
 
+    function cancelProcess() {
+      fetch('/process/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+        .then(function(r) { return r.json(); })
+        .catch(function() {});  // best-effort — poll will catch the cancelled state
+    }
+
     function closeProcessModal() {
       _stopPoll();
       document.getElementById('processOverlay').style.display = 'none';
-      // Reload so totals reflect newly imported transactions
-      var wasProcessing = document.getElementById('procDone').style.display !== 'none';
-      if (wasProcessing) window.location.reload();
+      // Only reload if we actually finished and imported something
+      var wasDone = document.getElementById('procDone').style.display !== 'none';
+      if (wasDone) window.location.reload();
     }
 
     function _pEsc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }

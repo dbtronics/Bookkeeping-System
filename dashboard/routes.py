@@ -23,8 +23,9 @@ _recategorize_state = {}
 _recategorize_lock  = threading.Lock()
 
 # Shared state for the raw-file processing job
-_process_state = {}
-_process_lock  = threading.Lock()
+_process_state  = {}
+_process_lock   = threading.Lock()
+_process_thread = None   # tracked so we can detect stale "running" state after a page refresh
 
 dashboard_bp = Blueprint("dashboard", __name__)
 log = logging.getLogger(__name__)
@@ -349,20 +350,52 @@ def rules_recategorize_status():
 @dashboard_bp.route("/process/start", methods=["POST"])
 @login_required
 def process_start():
-    """Start a background raw-file processing job. Returns immediately."""
-    global _process_state
+    """Start a background raw-file processing job. Returns immediately.
+
+    If a job is still genuinely running, returns {"status": "already_running"}
+    so the modal can attach to the existing job and start polling.
+    If the thread has died but state was never cleaned up (e.g. server restart,
+    page refresh after crash), auto-resets and starts fresh.
+    """
+    global _process_state, _process_thread
     with _process_lock:
+        # Auto-reset stale state: running flag set but thread is gone
+        if _process_state.get("running") and _process_thread and not _process_thread.is_alive():
+            log.info("Stale process state detected — resetting before new run")
+            _process_state = {}
+
         if _process_state.get("running"):
-            return jsonify({"error": "Already running"}), 409
+            # Genuinely still running — let the modal attach and start polling
+            return jsonify({"status": "already_running"})
+
         _process_state = {"running": True, "done": False}
 
     def _run():
-        global _process_state
         from raw_processor import run_with_progress
         run_with_progress(_process_state)
 
-    threading.Thread(target=_run, daemon=True).start()
+    _process_thread = threading.Thread(target=_run, daemon=True)
+    _process_thread.start()
     return jsonify({"status": "started"})
+
+
+@dashboard_bp.route("/process/cancel", methods=["POST"])
+@login_required
+def process_cancel():
+    """Request cancellation of the running processing job.
+
+    Sets a cancel_requested flag that the background thread checks between
+    files. Also fires the input_event so the thread unblocks immediately
+    if it is currently waiting for user input.
+    """
+    with _process_lock:
+        if not _process_state.get("running"):
+            return jsonify({"status": "not_running"})
+        _process_state["cancel_requested"] = True
+        event = _process_state.get("_input_event")
+    if event:
+        event.set()   # unblock thread if it's waiting for user input
+    return jsonify({"status": "cancelling"})
 
 
 @dashboard_bp.route("/process/status", methods=["GET"])
