@@ -214,6 +214,94 @@
         </div>
       </div>
 
+      <!-- State 4: Waiting for user input (file identification + rename confirmation) -->
+      <div id="procWaiting" style="display:none;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+          <h3 style="margin:0;flex:1;">File identification</h3>
+          <span class="pill orange" style="background:rgba(230,130,0,.15);color:#c96000;border:1px solid rgba(230,130,0,.3);">Action needed</span>
+        </div>
+
+        <div style="margin-bottom:10px;">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">File (original name)</div>
+          <div id="procWaitFilename" class="mono" style="font-size:12px;color:var(--text);word-break:break-all;"></div>
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">File preview</div>
+          <pre id="procWaitPreview" style="margin:0;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:11px;overflow-x:auto;max-height:90px;overflow-y:auto;white-space:pre;"></pre>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <!-- Bank -->
+          <div>
+            <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px;">Bank</label>
+            <select id="procWaitBank" oninput="_updateNewName()" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px;">
+              <option value="">Select bank…</option>
+              <option value="cibc">CIBC</option>
+              <option value="rbc">RBC</option>
+              <option value="td">TD</option>
+              <option value="bmo">BMO</option>
+              <option value="scotiabank">Scotiabank</option>
+              <option value="hsbc">HSBC</option>
+              <option value="national">National Bank</option>
+              <option value="desjardins">Desjardins</option>
+            </select>
+          </div>
+
+          <!-- Card alias -->
+          <div>
+            <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px;">Card name <span style="text-transform:none;letter-spacing:0;font-style:italic;">(optional)</span></label>
+            <input type="text" id="procWaitAlias" placeholder="e.g. aeroplan, dividend" oninput="_updateNewName()" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box;">
+          </div>
+
+          <!-- Account type -->
+          <div>
+            <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:6px;">Account type</label>
+            <div style="display:flex;gap:14px;">
+              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;">
+                <input type="radio" name="procWaitAcct" value="personal" onchange="_updateNewName()"> Personal
+              </label>
+              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;">
+                <input type="radio" name="procWaitAcct" value="business" onchange="_updateNewName()"> Business
+              </label>
+            </div>
+          </div>
+
+          <!-- Card type -->
+          <div>
+            <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:6px;">Card type</label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;">
+                <input type="radio" name="procWaitCard" value="chequing" onchange="_updateNewName()"> Chequing
+              </label>
+              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;">
+                <input type="radio" name="procWaitCard" value="credit" onchange="_updateNewName()"> Credit
+              </label>
+              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;">
+                <input type="radio" name="procWaitCard" value="savings" onchange="_updateNewName()"> Savings
+              </label>
+              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;">
+                <input type="radio" name="procWaitCard" value="loc" onchange="_updateNewName()"> LOC
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Date range (read-only, from file content) -->
+        <div style="margin-bottom:12px;">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">Date range (from file)</div>
+          <div id="procWaitDates" class="mono" style="font-size:13px;color:var(--text);"></div>
+        </div>
+
+        <!-- New filename preview -->
+        <div style="margin-bottom:14px;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:3px;">New filename</div>
+          <div id="procWaitNewName" class="mono" style="font-size:12px;color:var(--teal);word-break:break-all;">—</div>
+        </div>
+
+        <button id="procWaitConfirmBtn" class="btn btn-approve" style="width:100%;" onclick="submitProcAnswer()">Confirm &amp; Continue</button>
+      </div>
+
       <!-- No files found -->
       <div id="procEmpty" style="display:none;text-align:center;padding:16px 0;">
         <div style="font-size:28px;margin-bottom:10px;">📂</div>
@@ -248,6 +336,8 @@
         .catch(function(e) { _showProcError(e.message); });
     }
 
+    var _procWaitData = null;   // tracks current waiting_for payload
+
     function _pollProcess() {
       fetch('/process/status')
         .then(function(r) { return r.json(); })
@@ -259,13 +349,24 @@
             return;
           }
 
+          if (d.phase === 'waiting_input') {
+            // Only re-render if this is a different file (avoid clobbering user edits)
+            var wf = d.waiting_for || {};
+            if (!_procWaitData || _procWaitData.filename !== wf.filename) {
+              _renderWaiting(wf);
+            }
+            return;
+          }
+
           if (d.phase === 'processing' || (d.phase === 'done' && !d.done)) {
+            _procWaitData = null;
             _renderProcessing(d);
             return;
           }
 
           if (d.done) {
             _stopPoll();
+            _procWaitData = null;
             if (d.files_found === 0) { _showProcState('empty'); return; }
             if (d.error)             { _showProcError(d.error); return; }
             _renderDone(d);
@@ -279,11 +380,12 @@
     }
 
     function _showProcState(state) {
-      ['procScanning','procProcessing','procDone','procEmpty','procError'].forEach(function(id) {
+      ['procScanning','procProcessing','procDone','procEmpty','procError','procWaiting'].forEach(function(id) {
         document.getElementById(id).style.display = 'none';
       });
       var map = { scanning:'procScanning', processing:'procProcessing',
-                  done:'procDone', empty:'procEmpty', error:'procError' };
+                  done:'procDone', empty:'procEmpty', error:'procError',
+                  waiting_input:'procWaiting' };
       if (map[state]) document.getElementById(map[state]).style.display = '';
     }
 
@@ -356,6 +458,109 @@
 
       var flaggedBtn = document.getElementById('procViewFlagged');
       flaggedBtn.style.display = (t.flagged && t.flagged > 0) ? '' : 'none';
+    }
+
+    // ── Waiting-input state ──
+
+    function _renderWaiting(wf) {
+      _procWaitData = wf;
+      _showProcState('waiting_input');
+
+      document.getElementById('procWaitFilename').textContent = wf.filename || '';
+
+      // Preview lines
+      document.getElementById('procWaitPreview').textContent = (wf.preview || []).join('\n') || '(no preview)';
+
+      // Date range
+      var det = wf.detected || {};
+      var dateStr = (det.date_from && det.date_to)
+        ? det.date_from + ' → ' + det.date_to
+        : 'Could not determine from file';
+      document.getElementById('procWaitDates').textContent = dateStr;
+
+      // Pre-fill detected values
+      var bankSel = document.getElementById('procWaitBank');
+      bankSel.value = (det.bank || '').toLowerCase();
+
+      document.querySelectorAll('input[name="procWaitAcct"]').forEach(function(r) {
+        r.checked = r.value === (det.account_type || '');
+      });
+      document.querySelectorAll('input[name="procWaitCard"]').forEach(function(r) {
+        r.checked = r.value === (det.card_type || '');
+      });
+      document.getElementById('procWaitAlias').value = det.card_alias || '';
+
+      // Reset confirm button
+      var btn = document.getElementById('procWaitConfirmBtn');
+      btn.disabled    = false;
+      btn.textContent = 'Confirm & Continue';
+
+      _updateNewName();
+    }
+
+    function _updateNewName() {
+      var bank  = document.getElementById('procWaitBank').value;
+      var acctEl = document.querySelector('input[name="procWaitAcct"]:checked');
+      var cardEl = document.querySelector('input[name="procWaitCard"]:checked');
+      var alias  = document.getElementById('procWaitAlias').value.trim()
+                     .toLowerCase().replace(/[^a-z0-9-]/g, '');
+
+      var acct = acctEl ? acctEl.value : '';
+      var card = cardEl ? cardEl.value : '';
+      var det  = (_procWaitData && _procWaitData.detected) || {};
+      var df   = (det.date_from || '').replace(/-/g, '');
+      var dt   = (det.date_to   || '').replace(/-/g, '');
+
+      var parts = [bank, acct, card];
+      if (alias) parts.push(alias);
+      if (df && dt) { parts.push(df); parts.push(dt); }
+      parts = parts.filter(Boolean);
+
+      var preview = parts.length ? parts.join('-') + '.csv' : '— fill in all fields above —';
+      document.getElementById('procWaitNewName').textContent = preview;
+    }
+
+    function submitProcAnswer() {
+      var bank   = document.getElementById('procWaitBank').value;
+      var acctEl = document.querySelector('input[name="procWaitAcct"]:checked');
+      var cardEl = document.querySelector('input[name="procWaitCard"]:checked');
+      var alias  = document.getElementById('procWaitAlias').value.trim();
+
+      if (!bank || !acctEl || !cardEl) {
+        alert('Please fill in Bank, Account type, and Card type before continuing.');
+        return;
+      }
+
+      var btn = document.getElementById('procWaitConfirmBtn');
+      btn.disabled    = true;
+      btn.textContent = 'Processing…';
+
+      // Map display bank value to display name (backend normalises)
+      var bankDisplayMap = {
+        cibc:'CIBC', rbc:'RBC', td:'TD', bmo:'BMO',
+        scotiabank:'Scotia', hsbc:'HSBC', national:'National', desjardins:'Desjardins'
+      };
+
+      fetch('/process/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bank:         bankDisplayMap[bank] || bank.toUpperCase(),
+          account_type: acctEl.value,
+          card_type:    cardEl.value,
+          card_alias:   alias.toLowerCase().replace(/[^a-z0-9-]/g, ''),
+        }),
+      })
+        .then(function(r) { return r.json(); })
+        .then(function() {
+          _procWaitData = null;
+          _showProcState('processing');
+        })
+        .catch(function(e) {
+          btn.disabled    = false;
+          btn.textContent = 'Confirm & Continue';
+          alert('Error: ' + e.message);
+        });
     }
 
     function closeProcessModal() {

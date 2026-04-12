@@ -39,7 +39,8 @@ TRANSACTION_HEADERS = [
     "amount",            # Negative = expense, positive = income (CAD)
     "bank_name",         # e.g. CIBC, RBC
     "account_type",      # personal or business
-    "card_type",         # chequing, credit, savings, debit
+    "card_type",         # chequing, credit, savings, loc
+    "card_alias",        # optional label for a specific card product (e.g. aeroplan, dividend)
     "category",          # Top-level category (must be from the valid list in config.py)
     "subcategory",       # Optional finer detail within the category
     "categorized_by",    # How it was categorized: rule | ai | manual
@@ -150,7 +151,8 @@ def load_transaction_state(path):
                 f"{float(row['amount']):.2f}",
                 row["bank_name"],
                 row["account_type"],
-                row["card_type"]
+                row["card_type"],
+                row.get("card_alias", ""),
             ))
         except (ValueError, KeyError):
             continue  # Skip malformed rows — don't crash the whole import
@@ -166,7 +168,8 @@ def load_transaction_state(path):
     return existing_keys, id_counter
 
 
-def is_duplicate(date, description, amount, bank_name, account_type, card_type, existing_keys):
+def is_duplicate(date, description, amount, bank_name, account_type, card_type, existing_keys,
+                 card_alias=""):
     """Check if a transaction is already recorded in the master CSV.
 
     Uses the in-memory existing_keys set built by load_transaction_state()
@@ -175,21 +178,17 @@ def is_duplicate(date, description, amount, bank_name, account_type, card_type, 
 
     Returns True if the transaction already exists — caller should skip it.
     Returns False if it's new — caller should write it.
-
-    Args:
-        date, description, amount, bank_name, account_type, card_type:
-            The transaction fields to check
-        existing_keys:
-            The set returned by load_transaction_state()
     """
     try:
-        key = (date, description, f"{float(amount):.2f}", bank_name, account_type, card_type)
+        key = (date, description, f"{float(amount):.2f}", bank_name, account_type, card_type,
+               card_alias or "")
         return key in existing_keys
     except (ValueError, KeyError):
         return False
 
 
-def register_transaction(date, description, amount, bank_name, account_type, card_type, existing_keys, id_counter):
+def register_transaction(date, description, amount, bank_name, account_type, card_type,
+                         existing_keys, id_counter, card_alias=""):
     """Generate a unique TXN ID and mark the transaction as seen.
 
     Call this only after is_duplicate() has returned False.
@@ -197,15 +196,57 @@ def register_transaction(date, description, amount, bank_name, account_type, car
     calls within the same batch stay consistent without re-reading the file.
 
     Returns the new transaction ID string, e.g. "TXN-20260115-0004"
-
-    Args:
-        date, description, amount, bank_name, account_type, card_type:
-            The transaction fields to register
-        existing_keys: The set from load_transaction_state() — updated in place
-        id_counter:    The dict from load_transaction_state() — updated in place
     """
     date_key = date.replace("-", "")
     n = id_counter.get(date_key, 0) + 1
     id_counter[date_key] = n
-    existing_keys.add((date, description, f"{float(amount):.2f}", bank_name, account_type, card_type))
+    existing_keys.add((date, description, f"{float(amount):.2f}", bank_name, account_type,
+                       card_type, card_alias or ""))
     return f"TXN-{date_key}-{n:04d}"
+
+
+def migrate_add_column(path, column_name, after_column=None):
+    """Add a missing column to an existing CSV file in place.
+
+    Safe to call even if the column already exists — does nothing in that case.
+    New column is filled with empty strings for all existing rows.
+
+    Args:
+        path:         Full path to the CSV file
+        column_name:  Name of the column to add
+        after_column: Insert after this column; if None, appends at end
+    """
+    import shutil, tempfile
+    path = Path(path)
+    if not path.exists():
+        return
+
+    rows = list(read_csv(path))
+    if not rows:
+        return
+
+    existing_headers = list(rows[0].keys())
+    if column_name in existing_headers:
+        return  # Already present — nothing to do
+
+    # Determine insert position
+    if after_column and after_column in existing_headers:
+        idx = existing_headers.index(after_column) + 1
+        new_headers = existing_headers[:idx] + [column_name] + existing_headers[idx:]
+    else:
+        new_headers = existing_headers + [column_name]
+
+    tmp = path.with_suffix(".tmp.csv")
+    try:
+        with open(tmp, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=new_headers)
+            writer.writeheader()
+            for row in rows:
+                row.setdefault(column_name, "")
+                writer.writerow(row)
+        shutil.move(str(tmp), str(path))
+        log.info(f"Migrated {path.name}: added column '{column_name}'")
+    except Exception as e:
+        log.error(f"Failed to migrate {path.name}: {e}")
+        if tmp.exists():
+            tmp.unlink()

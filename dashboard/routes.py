@@ -368,8 +368,23 @@ def process_start():
 @dashboard_bp.route("/process/status", methods=["GET"])
 @login_required
 def process_status():
-    """Poll for raw-file processing progress."""
-    return jsonify(dict(_process_state))
+    """Poll for raw-file processing progress. Strips non-JSON-serializable values."""
+    safe = {k: v for k, v in _process_state.items()
+            if isinstance(v, (str, int, float, bool, list, dict, type(None)))}
+    return jsonify(safe)
+
+
+@dashboard_bp.route("/process/answer", methods=["POST"])
+@login_required
+def process_answer():
+    """Submit user's identification answer for a file waiting for input."""
+    data = request.get_json() or {}
+    with _process_lock:
+        _process_state["answer"] = data
+        event = _process_state.get("_input_event")
+    if event:
+        event.set()
+    return jsonify({"status": "ok"})
 
 
 @dashboard_bp.route("/rules/dismiss", methods=["POST"])
