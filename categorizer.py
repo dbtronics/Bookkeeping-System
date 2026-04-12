@@ -112,26 +112,29 @@ def match_rule(transaction, rules):
     """
     description  = transaction.get("description", "").lower()
     account_type = transaction.get("account_type", "")
+    card_type    = transaction.get("card_type", "")
     try:
         amount = float(transaction.get("amount", 0))
     except (ValueError, TypeError):
         amount = 0.0
 
     for rule in rules:
-        match        = rule.get("match", {})
-        keyword      = match.get("vendor_name_contains", "").lower()
-        rule_account = match.get("account_type", "")
-        rule_sign    = match.get("amount_sign", "")   # "positive" | "negative" | "" (either)
+        match          = rule.get("match", {})
+        keyword        = match.get("vendor_name_contains", "").lower()
+        rule_account   = match.get("account_type", "")
+        rule_sign      = match.get("amount_sign", "")   # "positive" | "negative" | "" (either)
+        rule_card_type = match.get("card_type", "")     # "loc" | "credit" | "" (any)
 
-        keyword_matches = keyword and keyword in description
-        account_matches = not rule_account or rule_account == account_type
-        sign_matches    = (
+        keyword_matches   = keyword and keyword in description
+        account_matches   = not rule_account   or rule_account   == account_type
+        card_type_matches = not rule_card_type or rule_card_type == card_type
+        sign_matches      = (
             not rule_sign
             or (rule_sign == "positive" and amount > 0)
             or (rule_sign == "negative" and amount < 0)
         )
 
-        if keyword_matches and account_matches and sign_matches:
+        if keyword_matches and account_matches and card_type_matches and sign_matches:
             log.debug(f"Rule {rule['id']} matched: {transaction['description'][:50]}")
             return rule.get("apply", {}), rule["id"], rule["description"]
 

@@ -33,7 +33,7 @@ FILE_CONFIGS = {
     "cibc-business-dc":  ("CIBC", "business", "chequing", "cibc"),
     "cibc-personal-cc":  ("CIBC", "personal", "credit",   "cibc"),
     "cibc-personal-dc":  ("CIBC", "personal", "chequing", "cibc"),
-    "cibc-personal-loc": ("CIBC", "personal", "credit",   "cibc"),
+    "cibc-personal-loc": ("CIBC", "personal", "loc",      "cibc"),
     "rbc-business-cc":   ("RBC",  "business", "credit",   "rbc"),
     "rbc-business-dc":   ("RBC",  "business", "chequing", "rbc"),
 }
@@ -129,7 +129,7 @@ def append_to_master(rows, bank, account_type, card_type, source_file,
 
         cat = categorize(
             {"description": row["description"], "account_type": account_type,
-             "amount": row["amount"], "bank_name": bank},
+             "amount": row["amount"], "bank_name": bank, "card_type": card_type},
             rules,
         )
 
