@@ -57,6 +57,9 @@
     </ul>
 
     <div class="sidebar-footer">
+      <button class="nav-link" onclick="openProcessModal()" title="Import new bank files from raw folder">
+        <span class="nav-icon">⇑</span> Process new files
+      </button>
       <button class="theme-toggle nav-link" onclick="toggleTheme()" title="Toggle dark/light mode" aria-label="Toggle theme">
         <span class="nav-icon theme-icon">☀</span>
         <span class="theme-label">Light mode</span>
@@ -160,6 +163,211 @@
     })();
   </script>
   {% block scripts %}{% endblock %}
+
+  <!-- ── Global: Process new files modal ── -->
+  <div id="processOverlay" class="recat-overlay" style="display:none;">
+    <div class="recat-modal" style="width:520px;max-width:95vw;">
+
+      <!-- State 1: Scanning -->
+      <div id="procScanning" style="display:none;text-align:center;padding:16px 0 8px;">
+        <div class="muted" style="font-size:15px;margin-bottom:6px;">Checking raw folder for new files…</div>
+        <div class="muted" style="font-size:12px;">This may take a moment.</div>
+      </div>
+
+      <!-- State 2: Processing -->
+      <div id="procProcessing" style="display:none;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+          <h3 style="margin:0;flex:1;">Processing files</h3>
+          <span id="procFilesCounter" class="pill grey"></span>
+        </div>
+
+        <!-- Current file + live cost -->
+        <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:12px;">
+          <div style="flex:1;">
+            <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Currently processing</div>
+            <div id="procCurrentFile" class="mono" style="font-size:13px;color:var(--text);"></div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;">
+            <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">API cost so far</div>
+            <div id="procLiveCost" class="mono" style="font-size:13px;color:var(--teal);">$0.0000 CAD</div>
+          </div>
+        </div>
+
+        <!-- Completed files list -->
+        <div id="procFilesList" style="display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto;"></div>
+      </div>
+
+      <!-- State 3: Done -->
+      <div id="procDone" style="display:none;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+          <h3 style="margin:0;flex:1;">Import complete</h3>
+          <span class="pill teal">✓ Done</span>
+        </div>
+
+        <div id="procDoneFiles" style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;margin-bottom:16px;"></div>
+
+        <div id="procTotals" class="recat-stats" style="margin-bottom:20px;"></div>
+
+        <div style="display:flex;gap:10px;">
+          <a id="procViewFlagged" href="{{ url_for('dashboard.dashboard_flagged') }}" class="btn btn-approve" style="flex:1;text-align:center;display:none;">View flagged</a>
+          <button class="btn btn-dismiss" style="flex:1;" onclick="closeProcessModal()">Done</button>
+        </div>
+      </div>
+
+      <!-- No files found -->
+      <div id="procEmpty" style="display:none;text-align:center;padding:16px 0;">
+        <div style="font-size:28px;margin-bottom:10px;">📂</div>
+        <div style="font-size:15px;margin-bottom:6px;">No new files found</div>
+        <div class="muted" style="font-size:13px;margin-bottom:20px;">The raw folder is empty or contains no recognised CSV files.</div>
+        <button class="btn btn-dismiss" style="width:100%;" onclick="closeProcessModal()">Close</button>
+      </div>
+
+      <!-- Error -->
+      <div id="procError" style="display:none;text-align:center;padding:16px 0;">
+        <div style="font-size:28px;margin-bottom:10px;">⚠</div>
+        <div id="procErrorMsg" style="color:var(--red);font-size:13px;margin-bottom:20px;"></div>
+        <button class="btn btn-dismiss" style="width:100%;" onclick="closeProcessModal()">Close</button>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    var _procPollTimer = null;
+
+    function openProcessModal() {
+      _showProcState('scanning');
+      document.getElementById('processOverlay').style.display = 'flex';
+
+      fetch('/process/start', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (d.error) { _showProcError(d.error); return; }
+          _procPollTimer = setInterval(_pollProcess, 1000);
+        })
+        .catch(function(e) { _showProcError(e.message); });
+    }
+
+    function _pollProcess() {
+      fetch('/process/status')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (d.error && !d.done) { _showProcError(d.error); _stopPoll(); return; }
+
+          if (d.phase === 'scanning') {
+            _showProcState('scanning');
+            return;
+          }
+
+          if (d.phase === 'processing' || (d.phase === 'done' && !d.done)) {
+            _renderProcessing(d);
+            return;
+          }
+
+          if (d.done) {
+            _stopPoll();
+            if (d.files_found === 0) { _showProcState('empty'); return; }
+            if (d.error)             { _showProcError(d.error); return; }
+            _renderDone(d);
+          }
+        })
+        .catch(function(e) { _showProcError(e.message); _stopPoll(); });
+    }
+
+    function _stopPoll() {
+      if (_procPollTimer) { clearInterval(_procPollTimer); _procPollTimer = null; }
+    }
+
+    function _showProcState(state) {
+      ['procScanning','procProcessing','procDone','procEmpty','procError'].forEach(function(id) {
+        document.getElementById(id).style.display = 'none';
+      });
+      var map = { scanning:'procScanning', processing:'procProcessing',
+                  done:'procDone', empty:'procEmpty', error:'procError' };
+      if (map[state]) document.getElementById(map[state]).style.display = '';
+    }
+
+    function _showProcError(msg) {
+      _showProcState('error');
+      document.getElementById('procErrorMsg').textContent = msg || 'An unexpected error occurred.';
+    }
+
+    function _fmtCost(cad) {
+      if (!cad || cad === 0) return null;
+      return '$' + cad.toFixed(4) + ' CAD';
+    }
+
+    function _fileRow(f, inProgress) {
+      var icons = { done: '✓', skipped: '—', error: '⚠' };
+      var colors = { done: 'var(--teal)', skipped: 'var(--muted)', error: 'var(--red)' };
+      var icon  = inProgress ? '…' : (icons[f.status]  || '✓');
+      var color = inProgress ? 'var(--muted)' : (colors[f.status] || 'var(--teal)');
+      var costStr = (!inProgress && f.api_cost_cad) ? _fmtCost(f.api_cost_cad) : null;
+      var stats = inProgress ? '' :
+        '<span class="muted" style="font-size:11px;white-space:nowrap;">' +
+          '+' + f.added + ' new · ' + f.dupes + ' dupes' +
+          (f.flagged ? ' · <span style="color:var(--red);">' + f.flagged + ' flagged</span>' : '') +
+          (costStr  ? ' · ' + costStr : '') +
+        '</span>';
+      return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);">'
+        + '<span style="color:' + color + ';font-size:14px;width:16px;text-align:center;flex-shrink:0;">' + icon + '</span>'
+        + '<span class="mono" style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _pEsc(f.name) + '</span>'
+        + stats
+        + '</div>';
+    }
+
+    function _renderProcessing(d) {
+      _showProcState('processing');
+      var total = d.files_found || 0;
+      var done  = d.files_done  || 0;
+      document.getElementById('procFilesCounter').textContent = done + ' / ' + total;
+      document.getElementById('procCurrentFile').textContent  = d.current_file || '';
+
+      var cost = (d.totals && d.totals.api_cost_cad) ? d.totals.api_cost_cad : 0;
+      document.getElementById('procLiveCost').textContent = '$' + cost.toFixed(4) + ' CAD';
+
+      var list = document.getElementById('procFilesList');
+      list.innerHTML = (d.files || []).map(function(f) { return _fileRow(f, false); }).join('');
+      if (d.current_file) {
+        list.innerHTML += _fileRow({ name: d.current_file, status: 'processing' }, true);
+      }
+    }
+
+    function _renderDone(d) {
+      _showProcState('done');
+      var files = d.files || [];
+      document.getElementById('procDoneFiles').innerHTML =
+        files.map(function(f) { return _fileRow(f, false); }).join('') || '<div class="muted">No files processed.</div>';
+
+      var t = d.totals || {};
+      var cost = t.api_cost_cad || 0;
+      var rows = [
+        ['Transactions added',  t.added          || 0,  ''],
+        ['Duplicates skipped',  t.dupes          || 0,  ''],
+        ['Matched by rules',    t.rule_matched   || 0,  ''],
+        ['AI categorized',      t.ai_categorized || 0,  ''],
+        ['Flagged for review',  t.flagged        || 0,  (t.flagged > 0 ? 'color:var(--red);' : '')],
+        ['Total API cost',      '$' + cost.toFixed(4) + ' CAD', 'color:var(--teal);'],
+      ];
+      document.getElementById('procTotals').innerHTML =
+        rows.map(function(r) {
+          return '<div class="recat-result-row"><span>' + r[0] + '</span><strong style="' + r[2] + '">' + r[1] + '</strong></div>';
+        }).join('');
+
+      var flaggedBtn = document.getElementById('procViewFlagged');
+      flaggedBtn.style.display = (t.flagged && t.flagged > 0) ? '' : 'none';
+    }
+
+    function closeProcessModal() {
+      _stopPoll();
+      document.getElementById('processOverlay').style.display = 'none';
+      // Reload so totals reflect newly imported transactions
+      var wasProcessing = document.getElementById('procDone').style.display !== 'none';
+      if (wasProcessing) window.location.reload();
+    }
+
+    function _pEsc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  </script>
 
   <!-- ── Global: Pass-through check modal (available on all pages) ── -->
   <div id="ptCheckOverlay" class="recat-overlay" style="display:none;">

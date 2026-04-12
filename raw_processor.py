@@ -16,7 +16,7 @@ from csv_utils import (
     load_transaction_state, is_duplicate, register_transaction, read_csv,
 )
 from categorizer import load_rules, categorize, suggest_rules
-from config import NEXTCLOUD_BASE, HAIKU_COST_PER_CALL
+from config import NEXTCLOUD_BASE, HAIKU_COST_PER_CALL, USD_TO_CAD
 log = get_logger("raw_processor")
 RAW_DIR        = NEXTCLOUD_BASE / "bank-transactions" / "raw"
 MASTER_CSV     = NEXTCLOUD_BASE / "master" / "master_transactions.csv"
@@ -114,11 +114,11 @@ def append_to_master(rows, bank, account_type, card_type, source_file,
                      existing_keys, id_counter, rules):
     """Categorize and append only new rows to master CSV.
 
-    Returns (added, dupes, flagged, api_calls).
+    Returns (added, dupes, flagged, rule_matched, ai_categorized).
     """
     ensure_csv(MASTER_CSV, TRANSACTION_HEADERS)
-    today                   = datetime.now().strftime("%Y-%m-%d")
-    added = dupes = flagged = api_calls = 0
+    today = datetime.now().strftime("%Y-%m-%d")
+    added = dupes = flagged = rule_matched = ai_categorized = 0
 
     for row in rows:
         if is_duplicate(row["date"], row["description"], row["amount"],
@@ -134,7 +134,9 @@ def append_to_master(rows, bank, account_type, card_type, source_file,
         )
 
         if cat["categorized_by"] == "ai":
-            api_calls += 1
+            ai_categorized += 1
+        elif cat["categorized_by"] == "rule":
+            rule_matched += 1
 
         txn_id = register_transaction(
             row["date"], row["description"], row["amount"],
@@ -169,7 +171,7 @@ def append_to_master(rows, bank, account_type, card_type, source_file,
                         row["date"], row["description"][:40],
                         cat["category"], cat["confidence"] or 0)
 
-    return added, dupes, flagged, api_calls
+    return added, dupes, flagged, rule_matched, ai_categorized
 
 
 # ---------------------------------------------------------------------------
@@ -177,10 +179,11 @@ def append_to_master(rows, bank, account_type, card_type, source_file,
 # ---------------------------------------------------------------------------
 
 def process_file(filepath, existing_keys, id_counter, rules):
+    """Process a single raw CSV file. Returns (added, dupes, flagged, rule_matched, ai_categorized)."""
     stem = filepath.stem
     if stem not in FILE_CONFIGS:
         log.warning("Skipping unknown file: %s (not in FILE_CONFIGS)", filepath.name)
-        return 0, 0, 0, 0  # added, dupes, flagged, api_calls
+        return 0, 0, 0, 0, 0
 
     bank, account_type, card_type, parser = FILE_CONFIGS[stem]
     log.info("── Processing %s  (%s, %s, %s)", filepath.name, bank, account_type, card_type)
@@ -189,36 +192,128 @@ def process_file(filepath, existing_keys, id_counter, rules):
         rows = parse_cibc(filepath) if parser == "cibc" else parse_rbc(filepath)
     except Exception as e:
         log.error("Parse error in %s: %s", filepath.name, e)
-        return 0, 0, 0, 0
+        return 0, 0, 0, 0, 0
 
     if not rows:
         log.warning("No rows parsed from %s", filepath.name)
-        return 0, 0, 0, 0
+        return 0, 0, 0, 0, 0
 
     log.info("Parsed %d rows from %s", len(rows), filepath.name)
 
-    file_added = file_dupes = file_flagged = file_api = 0
+    file_added = file_dupes = file_flagged = file_rule = file_ai = 0
 
     for (year, month), month_rows in sorted(group_by_month(rows).items()):
         dest = write_organized_csv(month_rows, bank, account_type, year, month, stem)
-        added, dupes, flagged, api_calls = append_to_master(
+        added, dupes, flagged, rule_matched, ai_categorized = append_to_master(
             month_rows, bank, account_type, card_type, dest,
             existing_keys, id_counter, rules,
         )
-        log.info("  [%s %d] %d rows → +%d new, %d dupes, %d flagged, %d AI calls",
-                 MONTHS[month], year, len(month_rows), added, dupes, flagged, api_calls)
+        log.info("  [%s %d] %d rows → +%d new, %d dupes, %d flagged, %d rules, %d AI",
+                 MONTHS[month], year, len(month_rows), added, dupes, flagged, rule_matched, ai_categorized)
 
         file_added   += added
         file_dupes   += dupes
         file_flagged += flagged
-        file_api     += api_calls
+        file_rule    += rule_matched
+        file_ai      += ai_categorized
 
-    return file_added, file_dupes, file_flagged, file_api
+    return file_added, file_dupes, file_flagged, file_rule, file_ai
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
+def run_with_progress(state):
+    """Run the full processing pipeline, updating `state` dict for UI polling.
+
+    state keys written:
+      phase          : "scanning" | "processing" | "done"
+      files_found    : int
+      files_done     : int
+      current_file   : str
+      files          : list of per-file result dicts
+      totals         : {added, dupes, flagged, rule_matched, ai_categorized}
+      error          : str | None
+      done           : bool
+      running        : bool
+    """
+    try:
+        state.update({"phase": "scanning", "files_found": 0, "files_done": 0,
+                      "current_file": "", "files": [],
+                      "totals": {"added": 0, "dupes": 0, "flagged": 0,
+                                 "rule_matched": 0, "ai_categorized": 0,
+                                 "api_cost_cad": 0.0},
+                      "error": None})
+
+        files = sorted(RAW_DIR.glob("*.csv"))
+        state["files_found"] = len(files)
+
+        if not files:
+            state.update({"phase": "done", "done": True, "running": False})
+            return
+
+        rules = load_rules()
+        existing_keys, id_counter = load_transaction_state(MASTER_CSV)
+        state["phase"] = "processing"
+
+        for f in files:
+            state["current_file"] = f.name
+            stem = f.stem
+            if stem not in FILE_CONFIGS:
+                state["files"].append({
+                    "name": f.name, "status": "skipped",
+                    "added": 0, "dupes": 0, "flagged": 0,
+                    "rule_matched": 0, "ai_categorized": 0,
+                    "note": "Unknown file — not in FILE_CONFIGS",
+                })
+                state["files_done"] += 1
+                continue
+
+            try:
+                added, dupes, flagged, rule_matched, ai_categorized = process_file(
+                    f, existing_keys, id_counter, rules,
+                )
+                status = "done"
+                note = ""
+            except Exception as e:
+                log.error("Error processing %s: %s", f.name, e)
+                added = dupes = flagged = rule_matched = ai_categorized = 0
+                status = "error"
+                note = str(e)
+
+            file_cost = round(ai_categorized * HAIKU_COST_PER_CALL * USD_TO_CAD, 4)
+            state["files"].append({
+                "name": f.name, "status": status,
+                "added": added, "dupes": dupes, "flagged": flagged,
+                "rule_matched": rule_matched, "ai_categorized": ai_categorized,
+                "api_cost_cad": file_cost,
+                "note": note,
+            })
+            t = state["totals"]
+            t["added"]          += added
+            t["dupes"]          += dupes
+            t["flagged"]        += flagged
+            t["rule_matched"]   += rule_matched
+            t["ai_categorized"] += ai_categorized
+            t["api_cost_cad"]    = round(t["api_cost_cad"] + file_cost, 4)
+            state["files_done"] += 1
+
+        # Rule suggestions after full run
+        try:
+            all_rows = read_csv(MASTER_CSV)
+            ai_rows  = [r for r in all_rows if r.get("categorized_by") == "ai"]
+            if ai_rows:
+                suggest_rules(ai_rows)
+        except Exception as e:
+            log.warning("suggest_rules failed: %s", e)
+
+        state.update({"phase": "done", "done": True, "running": False, "current_file": ""})
+
+    except Exception as e:
+        log.error("run_with_progress failed: %s", e)
+        state.update({"error": str(e), "done": True, "running": False, "phase": "done"})
+
 
 def main():
     start_time = time.time()
@@ -226,41 +321,19 @@ def main():
     log.info("raw_processor started")
     log.info("Scanning: %s", RAW_DIR)
 
-    files = sorted(RAW_DIR.glob("*.csv"))
-    if not files:
-        log.warning("No CSV files found in raw/ — nothing to do")
-        return
+    state = {"running": True}
+    run_with_progress(state)
 
-    log.info("Found %d file(s): %s", len(files), ", ".join(f.name for f in files))
-
-    rules = load_rules()
-    existing_keys, id_counter = load_transaction_state(MASTER_CSV)
-    log.info("Master CSV has %d existing transactions", len(existing_keys))
-
-    total_added = total_dupes = total_flagged = total_api = 0
-
-    for f in files:
-        added, dupes, flagged, api_calls = process_file(
-            f, existing_keys, id_counter, rules
-        )
-        total_added   += added
-        total_dupes   += dupes
-        total_flagged += flagged
-        total_api     += api_calls
-
-    # Rule suggestions
-    all_rows = read_csv(MASTER_CSV)
-    ai_rows  = [r for r in all_rows if r.get("categorized_by") == "ai"]
-    if ai_rows:
-        suggest_rules(ai_rows)
-
+    t = state.get("totals", {})
     elapsed      = time.time() - start_time
-    est_cost_cad = total_api * HAIKU_COST_PER_CALL * 1.38  # rough USD→CAD
+    ai_calls     = t.get("ai_categorized", 0)
+    est_cost_cad = ai_calls * HAIKU_COST_PER_CALL * 1.38
 
     log.info("=" * 60)
     log.info("raw_processor finished in %.1fs", elapsed)
-    log.info("Summary: %d files | +%d new | %d dupes | %d flagged | %d AI calls (~$%.4f CAD)",
-             len(files), total_added, total_dupes, total_flagged, total_api, est_cost_cad)
+    log.info("Summary: %d files | +%d new | %d dupes | %d flagged | %d rules | %d AI (~$%.4f CAD)",
+             state.get("files_found", 0), t.get("added", 0), t.get("dupes", 0),
+             t.get("flagged", 0), t.get("rule_matched", 0), ai_calls, est_cost_cad)
     log.info("=" * 60)
 
 

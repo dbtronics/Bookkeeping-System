@@ -22,6 +22,10 @@ from dashboard.aggregator import get_overview, get_business, get_personal, get_f
 _recategorize_state = {}
 _recategorize_lock  = threading.Lock()
 
+# Shared state for the raw-file processing job
+_process_state = {}
+_process_lock  = threading.Lock()
+
 dashboard_bp = Blueprint("dashboard", __name__)
 log = logging.getLogger(__name__)
 
@@ -340,6 +344,32 @@ def rules_recategorize():
 def rules_recategorize_status():
     """Poll this endpoint for live job progress."""
     return jsonify(dict(_recategorize_state))
+
+
+@dashboard_bp.route("/process/start", methods=["POST"])
+@login_required
+def process_start():
+    """Start a background raw-file processing job. Returns immediately."""
+    global _process_state
+    with _process_lock:
+        if _process_state.get("running"):
+            return jsonify({"error": "Already running"}), 409
+        _process_state = {"running": True, "done": False}
+
+    def _run():
+        global _process_state
+        from raw_processor import run_with_progress
+        run_with_progress(_process_state)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"status": "started"})
+
+
+@dashboard_bp.route("/process/status", methods=["GET"])
+@login_required
+def process_status():
+    """Poll for raw-file processing progress."""
+    return jsonify(dict(_process_state))
 
 
 @dashboard_bp.route("/rules/dismiss", methods=["POST"])
