@@ -510,8 +510,9 @@ def rules_propose():
         return jsonify({"error": "No description provided"}), 400
 
     cats = get_categories()
-    biz_cats = ", ".join(cats.get("business", []))
-    per_cats = ", ".join(cats.get("personal", []))
+    _system_only = get_exclude_from_pnl_categories()
+    biz_cats = ", ".join(c for c in cats.get("business", []) if c not in _system_only)
+    per_cats = ", ".join(c for c in cats.get("personal", []) if c not in _system_only)
 
     prompt = f"""You are a rule generator for a household bookkeeping system.
 Convert the user's plain-English description into one or more rule JSON objects.

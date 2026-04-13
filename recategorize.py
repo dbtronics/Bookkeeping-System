@@ -25,7 +25,7 @@ from config import (
     CATEGORIZER_MAX_TOKENS, CONFIDENCE_THRESHOLD,
     NL_MODEL_PRICING, USD_TO_CAD,
 )
-from settings_utils import get_categories
+from settings_utils import get_categories, get_exclude_from_pnl_categories
 from categorizer import load_rules, match_rule
 from csv_utils import TRANSACTION_HEADERS
 from logger import get_logger
@@ -38,7 +38,8 @@ _PRICING = NL_MODEL_PRICING.get(HAIKU_MODEL, {"input": 0.80, "output": 4.00})
 def _categorize_with_claude(row):
     """Call Claude Haiku for one row. Returns (result_dict, input_tokens, output_tokens)."""
     account_type = row.get("account_type", "business")
-    valid_categories = get_categories(account_type)
+    _system_only = get_exclude_from_pnl_categories()
+    valid_categories = [c for c in get_categories(account_type) if c not in _system_only]
     categories_str = "\n".join(f"  - {c}" for c in valid_categories)
 
     prompt = f"""Categorize this Canadian bank transaction. Return ONLY a JSON object — no explanation, no markdown.

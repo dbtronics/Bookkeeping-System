@@ -54,7 +54,7 @@ from config import (
     CONFIDENCE_THRESHOLD, CATEGORIZER_MAX_TOKENS,
     RULE_SUGGESTION_MIN,
 )
-from settings_utils import get_categories
+from settings_utils import get_categories, get_exclude_from_pnl_categories
 
 log = get_logger("categorizer")
 
@@ -224,7 +224,10 @@ def _claude_categorize(transaction):
     Uncategorized — never crashes the ingest process.
     """
     account_type = transaction.get("account_type", "business")
-    valid_categories = get_categories(account_type)
+    # Exclude system-only categories — Pass-through is set by the scanner,
+    # Credit card payment is set by rules. Claude should never assign these.
+    _system_only = get_exclude_from_pnl_categories()
+    valid_categories = [c for c in get_categories(account_type) if c not in _system_only]
     categories_str = "\n".join(f"  - {c}" for c in valid_categories)
 
     prompt = f"""Categorize this Canadian bank transaction. Return ONLY a JSON object — no explanation, no markdown.
