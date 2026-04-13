@@ -1131,11 +1131,11 @@ def passthrough_apply():
             elif tid in owner_draw_ids:
                 acct = row.get("account_type", "personal")
                 if acct == "business":
-                    row["category"]    = "Owner's Draw"
+                    row["category"]    = "Shareholder salary"
                     row["subcategory"] = ""
                 else:
                     row["category"]    = "Income"
-                    row["subcategory"] = "Owner's Draw"
+                    row["subcategory"] = "Shareholder salary"
                 row["vendor_name"]      = "Internal Transfer"
                 row["exclude_from_pnl"] = "False"
                 row["categorized_by"]   = "manual"
