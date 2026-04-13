@@ -84,13 +84,10 @@
          alt="DBtronics"
          class="mobile-logo-img">
     <div class="mobile-topbar-right">
-      {% if months is defined %}
-      <select class="month-select-mobile" onchange="applyMonth(this.value)">
-        <option value="">All months</option>
-        {% for m in months %}
-          <option value="{{ m }}" {% if selected_month == m %}selected{% endif %}>{{ m }}</option>
-        {% endfor %}
-      </select>
+      {% if date_label is defined %}
+      <button class="drp-trigger-mobile" id="drpTriggerMobile" onclick="toggleDateRangePicker(event, this)">
+        <span id="drpLabelMobile">{{ date_label }}</span> ▾
+      </button>
       {% endif %}
       <button class="theme-toggle-mobile" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
         <span class="theme-icon-mobile">☀</span>
@@ -105,13 +102,11 @@
     <div class="page-header">
       <h1>{% block page_title %}{% endblock %}</h1>
       <div class="page-header-right">
-        {% if months is defined %}
-        <select class="month-select" onchange="applyMonth(this.value)">
-          <option value="">All months</option>
-          {% for m in months %}
-            <option value="{{ m }}" {% if selected_month == m %}selected{% endif %}>{{ m }}</option>
-          {% endfor %}
-        </select>
+        {% if date_label is defined %}
+        <button class="drp-trigger" id="drpTrigger" onclick="toggleDateRangePicker(event, this)">
+          <span id="drpLabel">{{ date_label }}</span>
+          <span class="drp-caret">▾</span>
+        </button>
         {% endif %}
       </div>
     </div>
@@ -120,12 +115,70 @@
   </main>
 
   <script>
-    function applyMonth(val) {
-      const url = new URL(window.location);
-      if (val) url.searchParams.set('month', val);
-      else url.searchParams.delete('month');
+    /* ── Date range picker ─────────────────────────── */
+    function toggleDateRangePicker(e, triggerEl) {
+      if (e) e.stopPropagation();
+      var panel = document.getElementById('drpPanel');
+      if (!panel) return;
+      var open = panel.style.display === 'none';
+      if (open) {
+        // Position below the trigger button
+        var rect = (triggerEl || e.currentTarget).getBoundingClientRect();
+        panel.style.top  = (rect.bottom + 6) + 'px';
+        // Align right edge with trigger right edge, but don't go off screen
+        var panelW = 240;
+        var right = window.innerWidth - rect.right;
+        panel.style.right  = right + 'px';
+        panel.style.left   = 'auto';
+        panel.style.display = '';
+      } else {
+        panel.style.display = 'none';
+      }
+    }
+
+    function toggleCustomRange(e) {
+      if (e) e.stopPropagation();
+      var body  = document.getElementById('drpCustomBody');
+      var caret = document.getElementById('drpCustomCaret');
+      if (!body) return;
+      var open = body.style.display === 'none';
+      body.style.display = open ? '' : 'none';
+      if (caret) caret.textContent = open ? '▾' : '▸';
+    }
+
+    function applyDatePreset(preset) {
+      var url = new URL(window.location);
+      url.searchParams.set('range', preset);
+      url.searchParams.delete('from');
+      url.searchParams.delete('to');
+      url.searchParams.delete('month');
       window.location = url.toString();
     }
+
+    function applyCustomRange() {
+      var from = document.getElementById('drpFrom');
+      var to   = document.getElementById('drpTo');
+      if (!from || !to || !from.value || !to.value) {
+        alert('Please select both From and To dates.');
+        return;
+      }
+      var url = new URL(window.location);
+      url.searchParams.set('range', 'custom');
+      url.searchParams.set('from', from.value);
+      url.searchParams.set('to', to.value);
+      url.searchParams.delete('month');
+      window.location = url.toString();
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+      var panel = document.getElementById('drpPanel');
+      if (!panel || panel.style.display === 'none') return;
+      var dt = document.getElementById('drpTrigger');
+      var dm = document.getElementById('drpTriggerMobile');
+      if ((dt && dt.contains(e.target)) || (dm && dm.contains(e.target)) || panel.contains(e.target)) return;
+      panel.style.display = 'none';
+    });
 
     function toggleTheme() {
       var html = document.documentElement;
@@ -872,5 +925,53 @@
     function closePtCheckAndReload() { closePtCheck(); window.location.reload(); }
     function _ptEsc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   </script>
+
+  <!-- ── Date range picker panel (shared, body-level) ── -->
+  {% if date_label is defined %}
+  <div class="drp-panel" id="drpPanel" style="display:none;position:fixed;z-index:9999;">
+    <div class="drp-presets">
+      <button class="drp-opt {% if active_preset == 'this_month' %}drp-active{% endif %}" onclick="applyDatePreset('this_month')">
+        <span class="drp-check">✓</span> This month
+      </button>
+      <button class="drp-opt {% if active_preset == 'last_month' %}drp-active{% endif %}" onclick="applyDatePreset('last_month')">
+        <span class="drp-check">✓</span> Last month
+      </button>
+      <button class="drp-opt {% if active_preset == 'this_quarter' %}drp-active{% endif %}" onclick="applyDatePreset('this_quarter')">
+        <span class="drp-check">✓</span> This quarter
+      </button>
+      <button class="drp-opt {% if active_preset == 'last_quarter' %}drp-active{% endif %}" onclick="applyDatePreset('last_quarter')">
+        <span class="drp-check">✓</span> Last quarter
+      </button>
+      <button class="drp-opt {% if active_preset == 'this_year' %}drp-active{% endif %}" onclick="applyDatePreset('this_year')">
+        <span class="drp-check">✓</span> This year
+      </button>
+      <button class="drp-opt {% if active_preset == 'last_year' %}drp-active{% endif %}" onclick="applyDatePreset('last_year')">
+        <span class="drp-check">✓</span> Last year
+      </button>
+      <button class="drp-opt {% if active_preset == 'all_time' %}drp-active{% endif %}" onclick="applyDatePreset('all_time')">
+        <span class="drp-check">✓</span> All time
+      </button>
+    </div>
+    <div class="drp-divider"></div>
+    <button class="drp-opt drp-custom-toggle {% if active_preset == 'custom' %}drp-active{% endif %}" id="drpCustomToggle" onclick="toggleCustomRange(event)">
+      <span class="drp-check">✓</span> Custom range
+      <span class="drp-custom-caret" id="drpCustomCaret">{% if active_preset == 'custom' %}▾{% else %}▸{% endif %}</span>
+    </button>
+    <div class="drp-custom-body" id="drpCustomBody" style="{% if active_preset != 'custom' %}display:none;{% endif %}">
+      <div class="drp-custom-row">
+        <div class="drp-date-field">
+          <label class="drp-date-label">From</label>
+          <input type="date" id="drpFrom" class="drp-date-input" value="{{ custom_from }}">
+        </div>
+        <span class="drp-arrow">→</span>
+        <div class="drp-date-field">
+          <label class="drp-date-label">To</label>
+          <input type="date" id="drpTo" class="drp-date-input" value="{{ custom_to }}">
+        </div>
+      </div>
+      <button class="btn btn-sm btn-approve" style="width:100%;margin-top:8px;" onclick="applyCustomRange()">Apply</button>
+    </div>
+  </div>
+  {% endif %}
 </body>
 </html>

@@ -238,8 +238,8 @@ a:hover { text-decoration: underline; }
   font-weight: 600;
 }
 
-/* ---- Month select ---------------------------------------- */
-.month-select, .month-select-mobile {
+/* ---- Account filter select (ledger) ---------------------- */
+.month-select {
   font-family: 'DM Sans', sans-serif;
   font-size: 13px;
   padding: 6px 10px;
@@ -249,8 +249,121 @@ a:hover { text-decoration: underline; }
   color: var(--text);
   cursor: pointer;
 }
+.month-select:focus { outline: none; border-color: var(--teal); }
 
-.month-select:focus, .month-select-mobile:focus { outline: none; border-color: var(--teal); }
+/* ---- Jira-style date range picker ------------------------ */
+.drp-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color .15s, background .15s;
+}
+.drp-trigger:hover { border-color: var(--teal); }
+
+.drp-caret { font-size: 10px; color: var(--muted); }
+
+.drp-panel {
+  width: 240px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.14);
+  overflow: hidden;
+}
+
+.drp-presets { padding: 6px 0; }
+
+.drp-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 14px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background .1s;
+}
+.drp-opt:hover { background: var(--bg); }
+
+.drp-check {
+  width: 14px;
+  font-size: 12px;
+  color: var(--teal);
+  flex-shrink: 0;
+  visibility: hidden;
+}
+.drp-active .drp-check { visibility: visible; }
+.drp-active { color: var(--teal); font-weight: 600; }
+
+.drp-divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+.drp-custom-toggle { justify-content: space-between; }
+.drp-custom-caret { font-size: 10px; color: var(--muted); margin-left: auto; }
+
+.drp-custom-body { padding: 8px 12px 12px; }
+
+.drp-custom-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drp-date-field { flex: 1; min-width: 0; }
+
+.drp-date-label {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+
+.drp-date-input {
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+.drp-date-input:focus { outline: none; border-color: var(--teal); }
+
+.drp-arrow { color: var(--muted); font-size: 12px; flex-shrink: 0; margin-top: 14px; }
+
+/* Mobile date range trigger */
+.drp-trigger-mobile {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  padding: 5px 9px;
+  cursor: pointer;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* ---- Cards ----------------------------------------------- */
 .card {
@@ -1668,7 +1781,7 @@ tr:hover .btn-pt-check { opacity: 1; }
     flex: 1;
   }
 
-  .month-select-mobile {
+  .drp-trigger-mobile {
     max-width: 100px;
   }
 
@@ -1685,8 +1798,8 @@ tr:hover .btn-pt-check { opacity: 1; }
     padding: 68px 16px 24px;
   }
 
-  /* Hide desktop month select */
-  .page-header .month-select { display: none; }
+  /* Hide desktop date range trigger on mobile (mobile has its own trigger) */
+  .page-header .drp-trigger { display: none; }
 
   /* Single-column grids */
   .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }

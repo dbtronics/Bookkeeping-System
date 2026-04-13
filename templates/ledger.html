@@ -8,9 +8,13 @@
 <!-- Filters bar -->
 <div class="ledger-filters">
   <form method="get" action="{{ url_for('dashboard.dashboard_ledger') }}" class="ledger-filter-form">
-    <!-- Preserve month if set -->
-    {% if selected_month and selected_month != 'all' %}
-    <input type="hidden" name="month" value="{{ selected_month }}">
+    <!-- Preserve date range -->
+    {% if active_preset %}
+    <input type="hidden" name="range" value="{{ active_preset }}">
+    {% endif %}
+    {% if active_preset == 'custom' and custom_from %}
+    <input type="hidden" name="from" value="{{ custom_from }}">
+    <input type="hidden" name="to" value="{{ custom_to }}">
     {% endif %}
 
     <input type="text" name="q" value="{{ search }}" placeholder="Search description, vendor, category…" class="ledger-search">

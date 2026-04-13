@@ -2,6 +2,8 @@ import datetime
 import json
 import logging
 import threading
+from calendar import monthrange
+from datetime import date as _date, timedelta
 from functools import wraps
 from pathlib import Path
 
@@ -32,6 +34,97 @@ _process_thread = None   # tracked so we can detect stale "running" state after 
 
 dashboard_bp = Blueprint("dashboard", __name__)
 log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Date range helpers
+# ---------------------------------------------------------------------------
+
+_PRESET_LABELS = {
+    "this_month":   "This month",
+    "last_month":   "Last month",
+    "this_quarter": "This quarter",
+    "last_quarter": "Last quarter",
+    "this_year":    "This year",
+    "last_year":    "Last year",
+    "all_time":     "All time",
+    "custom":       "Custom range",
+}
+
+
+def resolve_date_range(preset="this_month", date_from=None, date_to=None):
+    """Convert a preset name or custom dates to (date_from, date_to, label, range_qs).
+
+    Returns:
+        date_from (str|None): YYYY-MM-DD
+        date_to   (str|None): YYYY-MM-DD
+        label     (str):      Human-readable label for the trigger button
+        range_qs  (str):      Query string fragment, e.g. '?range=this_month'
+    """
+    today = _date.today()
+
+    if preset == "last_month":
+        last_day_prev = today.replace(day=1) - timedelta(days=1)
+        first = last_day_prev.replace(day=1)
+        label = first.strftime("%b %Y")
+        return first.isoformat(), last_day_prev.isoformat(), label, "?range=last_month"
+
+    if preset == "this_quarter":
+        q_start_month = ((today.month - 1) // 3) * 3 + 1
+        first = today.replace(month=q_start_month, day=1)
+        q_num = (today.month - 1) // 3 + 1
+        label = f"Q{q_num} {today.year}"
+        return first.isoformat(), today.isoformat(), label, "?range=this_quarter"
+
+    if preset == "last_quarter":
+        q_start_month = ((today.month - 1) // 3) * 3 + 1
+        last_q_end = today.replace(month=q_start_month, day=1) - timedelta(days=1)
+        last_q_start_month = ((last_q_end.month - 1) // 3) * 3 + 1
+        first = last_q_end.replace(month=last_q_start_month, day=1)
+        q_num = (last_q_end.month - 1) // 3 + 1
+        label = f"Q{q_num} {last_q_end.year}"
+        return first.isoformat(), last_q_end.isoformat(), label, "?range=last_quarter"
+
+    if preset == "this_year":
+        first = today.replace(month=1, day=1)
+        return first.isoformat(), today.isoformat(), str(today.year), "?range=this_year"
+
+    if preset == "last_year":
+        first = _date(today.year - 1, 1, 1)
+        last  = _date(today.year - 1, 12, 31)
+        return first.isoformat(), last.isoformat(), str(today.year - 1), "?range=last_year"
+
+    if preset == "all_time":
+        return None, None, "All time", "?range=all_time"
+
+    if preset == "custom" and date_from and date_to:
+        label = f"{_fmt_date_label(date_from)} – {_fmt_date_label(date_to)}"
+        return date_from, date_to, label, f"?range=custom&from={date_from}&to={date_to}"
+
+    # Default: this_month
+    first = today.replace(day=1)
+    label = today.strftime("%b %Y")
+    return first.isoformat(), today.isoformat(), label, "?range=this_month"
+
+
+def _fmt_date_label(s):
+    """Format YYYY-MM-DD as 'Jan 1' or 'Jan 1, 2025' if not current year."""
+    try:
+        d = _date.fromisoformat(s)
+        today = _date.today()
+        if d.year == today.year:
+            return d.strftime("%b %-d")
+        return d.strftime("%b %-d, %Y")
+    except Exception:
+        return s
+
+
+def _parse_date_range(req):
+    """Read ?range=, ?from=, ?to= from a Flask request and resolve."""
+    preset    = req.args.get("range", "this_month")
+    date_from = req.args.get("from")
+    date_to   = req.args.get("to")
+    return resolve_date_range(preset, date_from, date_to)
 
 
 # ---------------------------------------------------------------------------
@@ -107,17 +200,23 @@ def _load_suggested_rules():
 @dashboard_bp.route("/dashboard")
 @login_required
 def dashboard_overview():
-    month = request.args.get("month")
-    data = get_overview(month_filter=month)
+    df, dt, label, range_qs = _parse_date_range(request)
+    data = get_overview(date_from=df, date_to=dt)
+    data.update(date_label=label, active_preset=request.args.get("range", "this_month"),
+                custom_from=request.args.get("from", ""), custom_to=request.args.get("to", ""),
+                range_qs=range_qs)
     return render_template("overview.html", **data)
 
 
 @dashboard_bp.route("/business")
 @login_required
 def dashboard_business():
-    month = request.args.get("month")
-    data = get_business(month_filter=month)
+    df, dt, label, range_qs = _parse_date_range(request)
+    data = get_business(date_from=df, date_to=dt)
     cats = get_categories()
+    data.update(date_label=label, active_preset=request.args.get("range", "this_month"),
+                custom_from=request.args.get("from", ""), custom_to=request.args.get("to", ""),
+                range_qs=range_qs)
     return render_template("business.html",
                            business_categories=cats.get("business", []),
                            personal_categories=cats.get("personal", []),
@@ -127,9 +226,12 @@ def dashboard_business():
 @dashboard_bp.route("/personal")
 @login_required
 def dashboard_personal():
-    month = request.args.get("month")
-    data = get_personal(month_filter=month)
+    df, dt, label, range_qs = _parse_date_range(request)
+    data = get_personal(date_from=df, date_to=dt)
     cats = get_categories()
+    data.update(date_label=label, active_preset=request.args.get("range", "this_month"),
+                custom_from=request.args.get("from", ""), custom_to=request.args.get("to", ""),
+                range_qs=range_qs)
     return render_template("personal.html",
                            business_categories=cats.get("business", []),
                            personal_categories=cats.get("personal", []),
@@ -139,19 +241,25 @@ def dashboard_personal():
 @dashboard_bp.route("/flagged")
 @login_required
 def dashboard_flagged():
-    month = request.args.get("month")
-    data = get_flagged(month_filter=month)
+    df, dt, label, range_qs = _parse_date_range(request)
+    data = get_flagged(date_from=df, date_to=dt)
+    data.update(date_label=label, active_preset=request.args.get("range", "this_month"),
+                custom_from=request.args.get("from", ""), custom_to=request.args.get("to", ""),
+                range_qs=range_qs)
     return render_template("flagged.html", **data)
 
 
 @dashboard_bp.route("/ledger")
 @login_required
 def dashboard_ledger():
-    month       = request.args.get("month")
-    account     = request.args.get("account")
-    search      = request.args.get("q", "").strip()
-    data = get_ledger(month_filter=month, account_type_filter=account or None, search=search or None)
+    df, dt, label, range_qs = _parse_date_range(request)
+    account = request.args.get("account")
+    search  = request.args.get("q", "").strip()
+    data = get_ledger(date_from=df, date_to=dt, account_type_filter=account or None, search=search or None)
     cats = get_categories()
+    data.update(date_label=label, active_preset=request.args.get("range", "this_month"),
+                custom_from=request.args.get("from", ""), custom_to=request.args.get("to", ""),
+                range_qs=range_qs)
     return render_template(
         "ledger.html",
         business_categories=cats.get("business", []),

@@ -96,7 +96,7 @@
     <div class="kpi-value {% if net >= 0 %}positive{% else %}negative{% endif %}">
       {% if net >= 0 %}+{% else %}−{% endif %}${{ "{:,.2f}".format(net|abs) }}
     </div>
-    <div class="kpi-sub">{{ selected_month if selected_month != 'all' else 'All time' }}</div>
+    <div class="kpi-sub">{{ date_label }}</div>
   </div>
   {% if flagged_count > 0 %}
   <div class="kpi-card kpi-flag">
@@ -113,7 +113,7 @@
     <div class="card-header">
       <span class="dot teal"></span>
       <h2>Business</h2>
-      <a href="{{ url_for('dashboard.dashboard_business', month=selected_month if selected_month != 'all' else '') }}" class="card-link">Details →</a>
+      <a href="{{ url_for('dashboard.dashboard_business') }}{{ range_qs }}" class="card-link">Details →</a>
     </div>
     <div class="snapshot-row">
       <span class="snapshot-label">Revenue</span>
@@ -135,7 +135,7 @@
     <div class="card-header">
       <span class="dot purple"></span>
       <h2>Personal</h2>
-      <a href="{{ url_for('dashboard.dashboard_personal', month=selected_month if selected_month != 'all' else '') }}" class="card-link">Details →</a>
+      <a href="{{ url_for('dashboard.dashboard_personal') }}{{ range_qs }}" class="card-link">Details →</a>
     </div>
     <div class="snapshot-row">
       <span class="snapshot-label">Income</span>

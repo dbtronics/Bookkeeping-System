@@ -11,8 +11,8 @@ from config import MASTER_TRANSACTIONS_CSV
 log = logging.getLogger(__name__)
 
 
-def _read_rows(month_filter=None, account_type_filter=None):
-    """Return rows from master_transactions.csv, optionally filtered."""
+def _read_rows(date_from=None, date_to=None, account_type_filter=None):
+    """Return rows from master_transactions.csv, optionally filtered by date range."""
     path = Path(MASTER_TRANSACTIONS_CSV)
     if not path.exists():
         return []
@@ -23,19 +23,13 @@ def _read_rows(month_filter=None, account_type_filter=None):
         log.error("Failed to read master CSV: %s", e)
         return []
 
-    if month_filter:
-        rows = [r for r in rows if r["date"].startswith(month_filter)]
+    if date_from:
+        rows = [r for r in rows if r.get("date", "") >= date_from]
+    if date_to:
+        rows = [r for r in rows if r.get("date", "") <= date_to]
     if account_type_filter:
         rows = [r for r in rows if r["account_type"] == account_type_filter]
     return rows
-
-
-def _available_months(rows=None):
-    """Return sorted list of YYYY-MM strings present in the data."""
-    if rows is None:
-        rows = _read_rows()
-    months = sorted(set(r["date"][:7] for r in rows if r.get("date")))
-    return months
 
 
 def _pnl_rows(rows):
@@ -54,10 +48,9 @@ def _amount(row):
 # Overview aggregation
 # ---------------------------------------------------------------------------
 
-def get_overview(month_filter=None):
+def get_overview(date_from=None, date_to=None):
     """Return dict with top-level KPIs for the overview page."""
-    all_rows = _read_rows(month_filter=month_filter)
-    months = _available_months(_read_rows())  # always full list for dropdown
+    all_rows = _read_rows(date_from=date_from, date_to=date_to)
 
     biz_rows = _pnl_rows([r for r in all_rows if r["account_type"] == "business"])
     per_rows = _pnl_rows([r for r in all_rows if r["account_type"] == "personal"])
@@ -71,14 +64,12 @@ def get_overview(month_filter=None):
     total_out = biz_expenses + per_expenses
     net       = total_in + total_out  # out is already negative
 
-    # Month-by-month trend (for chart) — across all months, split by account_type
-    trend = _build_trend(_read_rows(account_type_filter=None))
+    # Trend chart always spans full history
+    trend = _build_trend(_read_rows())
 
     flagged = [r for r in all_rows if r.get("flagged", "").strip().lower() == "true"]
 
     return {
-        "months": months,
-        "selected_month": month_filter or "all",
         "biz_revenue":  round(biz_revenue,  2),
         "biz_expenses": round(abs(biz_expenses), 2),
         "biz_net":      round(biz_revenue + biz_expenses, 2),
@@ -117,10 +108,9 @@ def _build_trend(rows):
 # Business aggregation
 # ---------------------------------------------------------------------------
 
-def get_business(month_filter=None):
+def get_business(date_from=None, date_to=None):
     """Return dict with business P&L breakdown by category."""
-    rows = _read_rows(month_filter=month_filter, account_type_filter="business")
-    months = _available_months(_read_rows())
+    rows = _read_rows(date_from=date_from, date_to=date_to, account_type_filter="business")
     pnl = _pnl_rows(rows)
 
     revenue  = sum(_amount(r) for r in pnl if _amount(r) > 0)
@@ -152,8 +142,6 @@ def get_business(month_filter=None):
     transactions = sorted(rows, key=lambda r: r["date"], reverse=True)
 
     return {
-        "months": months,
-        "selected_month": month_filter or "all",
         "revenue":  round(revenue, 2),
         "expenses": round(abs(expenses), 2),
         "net":      round(revenue + expenses, 2),
@@ -183,10 +171,9 @@ def _vendor_display(row):
     return vendor or "Unknown"
 
 
-def get_personal(month_filter=None):
+def get_personal(date_from=None, date_to=None):
     """Return dict with personal income/expense breakdown by category."""
-    rows = _read_rows(month_filter=month_filter, account_type_filter="personal")
-    months = _available_months(_read_rows())
+    rows = _read_rows(date_from=date_from, date_to=date_to, account_type_filter="personal")
     pnl = _pnl_rows(rows)
 
     income   = sum(_amount(r) for r in pnl if _amount(r) > 0)
@@ -217,8 +204,6 @@ def get_personal(month_filter=None):
     transactions = sorted(rows, key=lambda r: r["date"], reverse=True)
 
     return {
-        "months": months,
-        "selected_month": month_filter or "all",
         "income":   round(income, 2),
         "expenses": round(abs(expenses), 2),
         "net":      round(income + expenses, 2),
@@ -234,14 +219,11 @@ def get_personal(month_filter=None):
 # Flagged transactions
 # ---------------------------------------------------------------------------
 
-def get_flagged(month_filter=None):
+def get_flagged(date_from=None, date_to=None):
     """Return all flagged transactions."""
-    rows = _read_rows(month_filter=month_filter)
-    months = _available_months(_read_rows())
+    rows = _read_rows(date_from=date_from, date_to=date_to)
     flagged = [r for r in rows if r.get("flagged", "").strip().lower() == "true"]
     return {
-        "months": months,
-        "selected_month": month_filter or "all",
         "flagged": sorted(flagged, key=lambda r: r["date"], reverse=True),
         "count": len(flagged),
     }
@@ -302,10 +284,9 @@ def _bar_items(amount_dict, txn_dict, top=None):
     ]
 
 
-def get_ledger(month_filter=None, account_type_filter=None, search=None):
+def get_ledger(date_from=None, date_to=None, account_type_filter=None, search=None):
     """Return all transactions for the Ledger view, with optional filters."""
-    rows = _read_rows(month_filter=month_filter, account_type_filter=account_type_filter)
-    months = _available_months(_read_rows())
+    rows = _read_rows(date_from=date_from, date_to=date_to, account_type_filter=account_type_filter)
 
     if search:
         q = search.lower()
@@ -319,8 +300,6 @@ def get_ledger(month_filter=None, account_type_filter=None, search=None):
 
     transactions = sorted(rows, key=lambda r: r.get("date", ""), reverse=True)
     return {
-        "months":           months,
-        "selected_month":   month_filter or "all",
         "transactions":     transactions,
         "total_count":      len(transactions),
     }
